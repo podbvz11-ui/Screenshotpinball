@@ -280,19 +280,35 @@ var BCDetect=(function(){
     return {text:text,dists:dists,margins:margins,glyphs:glyphs,H:H,end:keep[keep.length-1].e};
   }
 
-  // 발행 시각 줄 읽기: 짧은 글자(-, :)는 건너뛰고 숫자만 모아 앞 12자리
+  // 발행 시각 줄 읽기: "2026-10-14  02:21  KST"를 띄어쓰기로 나눠 날짜 8자리 + 시각 4자리를 따로 읽음
+  // 형식이 맞지 않으면(자릿수가 다르거나 월·일·시·분 범위 밖) 빈 값 → 시각으로는 구분하지 않음
   function readTimeDigits(M){
     var segs=segments(M);if(!segs.length)return '';
     var info=segs.map(function(s){var r=rowRange(M,s[0],s[1]);return {s:s[0],e:s[1],a:r[0],b:r[1],h:r[1]-r[0]+1};});
-    var H=Math.max.apply(null,info.map(function(i){return i.h;})),out='';
-    var ws=info.filter(function(i){return i.h>=H*0.7;}).map(function(i){return i.e-i.s;}).sort(function(a,b){return a-b;}),medW=ws[ws.length>>1]||1;
-    function hasGap(M,g){for(var y=g.a;y<=g.b;y++){var any=0;for(var x=g.s;x<g.e;x++)if(M.m[y*M.w+x]){any=1;break;}if(!any)return true;}return false;}
-    for(var k=0;k<info.length&&out.length<12;k++){var g=info[k];
-      if(g.h<H*0.7||(g.e-g.s)<medW*0.6||hasGap(M,g))continue;
-      var v=grid(M,g.s,g.e,g.a,g.b,8,10),best=null,bd=99;
-      Object.keys(T).forEach(function(c){T[c].forEach(function(t){var d=hamming(v,t);if(d<bd){bd=d;best=c;}});});
-      out+=best;}
-    return out.length===12?out:'';
+    var H=Math.max.apply(null,info.map(function(i){return i.h;}));
+    function hasGap(g){for(var y=g.a;y<=g.b;y++){var any=0;for(var x=g.s;x<g.e;x++)if(M.m[y*M.w+x]){any=1;break;}if(!any)return true;}return false;}
+    // 띄어쓰기(큰 간격)로 단어 나누기
+    var words=[[info[0]]];
+    for(var k=1;k<info.length;k++){if(info[k].s-info[k-1].e>H*0.45)words.push([]);words[words.length-1].push(info[k]);}
+    function digitsOf(word){
+      var out='';
+      for(var i=0;i<word.length;i++){var g=word[i];
+        if(g.h<H*0.7||hasGap(g))continue;          // - 와 : 는 건너뜀
+        var v=grid(M,g.s,g.e,g.a,g.b,8,10),best=null,bd=99,second=99;
+        Object.keys(T).forEach(function(c){var m=99;T[c].forEach(function(t){var d=hamming(v,t);if(d<m)m=d;});
+          if(m<bd){second=bd;bd=m;best=c;}else if(m<second)second=m;});
+        if(bd>34)return null;                       // 숫자와 너무 다른 글자(K, S, T 등)
+        out+=best;}
+      return out;
+    }
+    var date=null,time=null;
+    for(var w=0;w<words.length;w++){var d=digitsOf(words[w]);if(d===null)continue;
+      if(d.length===8&&date===null){date=d;continue;}
+      if(d.length===4&&date!==null&&time===null){time=d;break;}}
+    if(!date||!time)return '';
+    var mo=+date.slice(4,6),da=+date.slice(6,8),hh=+time.slice(0,2),mi=+time.slice(2,4);
+    if(mo<1||mo>12||da<1||da>31||hh>23||mi>59)return '';
+    return date+time;
   }
   // 글자 모양 서명 (같은 닉네임/시각인지 비교용)
   function signature(M){
@@ -468,6 +484,7 @@ var BCDetect=(function(){
       if(cost<best[j].c)best[j]={c:cost,parts:best[i].parts.concat([{ch:m.ch,cost:m.cost,key:key,x0:runs[i][0],x1:runs[j-1][1],known:m.cost<=maxCost}])};
     }
     var parts=best[n].parts;
+    parts.forEach(function(p){var st=strokeInfo(M,p.x0,p.x1,t,b);p.thick=st.thick;p.dens=st.dens;});
     if(Gr)parts.forEach(function(p){if(!p.known)return;var m=cache[p.key];var k=decide(Gr,M.w,p.x0,p.x1,t,b,m.near);p.ch=hangulChar(k);});
     return {text:parts.map(function(p){return p.known?p.ch:'?';}).join(''),parts:parts,top:t,bot:b};
   }
@@ -476,6 +493,15 @@ var BCDetect=(function(){
     var w=x1-x0,h=y1-y0,g=new Float32Array(w*h),d=img.data;
     for(var y=0;y<h;y++)for(var x=0;x<w;x++){var i=((y+y0)*img.width+(x+x0))*4;g[y*w+x]=(d[i]+d[i+1]+d[i+2])/765;}
     return g;
+  }
+  function strokeInfo(M,x0,x1,y0,y1){
+    var hr=[],vr=[],ink=0,x,y,c;
+    for(y=y0;y<y1;y++){c=0;for(x=x0;x<x1;x++){if(M.m[y*M.w+x]){c++;ink++;}else if(c){hr.push(c);c=0;}}if(c)hr.push(c);}
+    for(x=x0;x<x1;x++){c=0;for(y=y0;y<y1;y++){if(M.m[y*M.w+x])c++;else if(c){vr.push(c);c=0;}}if(c)vr.push(c);}
+    function med(a){if(!a.length)return 0;a.sort(function(p,q){return p-q;});return a[a.length>>1];}
+    var ys=-1,ye=-1;for(y=y0;y<y1;y++){for(x=x0;x<x1;x++)if(M.m[y*M.w+x]){if(ys<0)ys=y;ye=y;break;}}
+    var area=Math.max(1,(x1-x0)*(ye-ys+1));
+    return {thick:Math.min(med(hr),med(vr)),dens:ink/area};
   }
   function subMask(M,x0,x1,y0,y1){var w=x1-x0,h=y1-y0,m=new Uint8Array(w*h);for(var y=0;y<h;y++)for(var x=0;x<w;x++)m[y*w+x]=M.m[(y+y0)*M.w+(x+x0)];return {w:w,h:h,m:m,x0:0,y0:0};}
 
@@ -725,7 +751,7 @@ var BCDetect=(function(){
 
   const auto={
     stream:null,track:null,ic:null,timer:null,busy:false,processing:false,pending:null,
-    seen:[],nicks:[],learned:{},log:[],ocr:null,ocrState:'none',
+    seen:[],nicks:[],learned:{},log:[],queue:[],ocr:null,ocrState:'none',
     load(){
       try{const s=JSON.parse(localStorage.getItem('ballCounter.auto')||'{}');
         this.seen=s.seen||[];this.nicks=s.nicks||[];this.learned=s.learned8||{};}catch(e){}
@@ -764,16 +790,24 @@ var BCDetect=(function(){
     if(jamoKey(a)===jamoKey(b))return true;
     return Math.min(a.length,b.length)>=2&&editDist(a,b)<=1;
   }
-  function timeEq(a,b,aSig,bSig){return (a&&b)?a===b:BCDetect.similar(aSig,bSig);}
+  // 발행 시각은 둘 다 확실히 읽혔을 때만 비교. 못 읽은 쪽이 있으면 시각으로는 구분하지 않음
+  function timeEq(a,b){return (a&&b)?a===b:true;}
   function sameCheck(a,b){
-    return a.amountText===b.amountText&&timeEq(a.timeText,b.timeText,a.timeSig,b.timeSig)&&
+    return a.amountText===b.amountText&&timeEq(a.timeText,b.timeText)&&
       (BCDetect.similar(a.nickSig,b.nickSig)||nameClose(a.nameRead,b.nameRead));
   }
   function seenBefore(r){
-    return auto.seen.some(s=>s.a===r.amountText&&timeEq(s.t,r.timeText,BCDetect.sigParse(s.ts),r.timeSig)&&
-      (nameClose(s.nr,r.nameRead)||nameClose(s.name,r.nameRead)||BCDetect.similar(BCDetect.sigParse(s.n),r.nickSig)));
+    const now=Date.now();
+    return auto.seen.some(s=>{
+      if(s.a!==r.amountText)return false;
+      const sameName=nameClose(s.nr,r.nameRead)||nameClose(s.name,r.nameRead)||BCDetect.similar(BCDetect.sigParse(s.n),r.nickSig);
+      if(!sameName)return false;
+      // 1분 안에 처리한 같은 사람·같은 금액은 시각이 다르게 읽혀도 같은 수표로 봄 (방송 화질로 시각을 잘못 읽는 경우 대비)
+      if(s.at&&now-s.at<60000)return true;
+      return timeEq(s.t,r.timeText);
+    });
   }
-  function markSeen(p,name){auto.seen.push({a:p.amountText,t:p.timeText||'',ts:BCDetect.sigStr(p.timeSig),nr:p.nameRead||'',name:name||'',n:BCDetect.sigStr(p.nickSig)});auto.save();}
+  function markSeen(p,name){auto.seen.push({a:p.amountText,t:p.timeText||'',nr:p.nameRead||'',name:name||'',n:BCDetect.sigStr(p.nickSig),at:Date.now()});auto.save();}
 
   function thumb(r){
     const b=r.box,w=b.x1-b.x0,h=b.y1-b.y0,sc=Math.min(1,300/w),c=document.createElement('canvas');
@@ -844,21 +878,48 @@ var BCDetect=(function(){
     try{const r=await auto.ocr.recognize(c);return {text:(r.data.text||'').trim(),conf:r.data.confidence||0};}catch(e){return {text:'',conf:0};}
   }
   // 닉네임 읽기: 한글은 마인크래프트 한글 폰트 모양과 대조, 영어·숫자는 글자 인식 도구로
+  // 영어·숫자 부분 전용 글자 인식 (영문자·숫자만 허용)
+  async function loadLatin(){
+    if(auto.latin||auto.latinState==='failed')return auto.latin;
+    if(auto.latinLoading)return auto.latinLoading;
+    auto.latinLoading=(async()=>{
+      try{
+        if(!window.Tesseract)await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js');
+        const w=await Tesseract.createWorker('eng',1);
+        await w.setParameters({tessedit_pageseg_mode:'7',tessedit_char_whitelist:'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_'});
+        auto.latin=w;
+      }catch(e){auto.latinState='failed';}
+      return auto.latin;
+    })();
+    return auto.latinLoading;
+  }
+  async function readLatin(sub){
+    const w=await loadLatin();if(!w)return '';
+    const tries=[toCanvas(BCDetect.ocrImage(sub,56)),blurred(BCDetect.ocrImage(sub,64),1.2),blurred(BCDetect.ocrImage(sub,48),0.8)];
+    const votes={};
+    for(const c of tries){
+      try{const r=await w.recognize(c);const t=(r.data.text||'').replace(/[^0-9A-Za-z_]/g,'');if(!t)continue;
+        const v=votes[t]||(votes[t]={t,count:0,conf:0});v.count++;v.conf=Math.max(v.conf,r.data.confidence||0);}catch(e){}
+    }
+    const list=Object.values(votes).sort((a,b)=>b.count-a.count||b.conf-a.conf);
+    return list.length?list[0].t:'';
+  }
+  // 닉네임 읽기: 한글은 마인크래프트 한글 폰트 모양과 대조, 영어·숫자는 영문 전용 글자 인식
+  // 획이 가늘면 한글, 두껍고 꽉 차 있으면 영어 폰트로 판단
   async function readName(M,G){
     const h=BCDetect.readHangul(M,0,G);
-    let name='',unknown=0;
+    const latinLike=p=>p.thick>=2.5||p.dens>=0.45;
+    let name='',unknown=0,shown='';
     for(let i=0;i<h.parts.length;){
       const p=h.parts[i];
-      if(p.known){name+=p.ch;i++;continue;}
-      let j=i;while(j<h.parts.length&&!h.parts[j].known)j++;
+      if(p.known||(!latinLike(p)&&p.cost<=95)){name+=p.ch;shown+=p.ch;i++;continue;}
+      let j=i;while(j<h.parts.length&&!(h.parts[j].known||(!latinLike(h.parts[j])&&h.parts[j].cost<=95)))j++;
       const x0=Math.max(0,h.parts[i].x0-1),x1=Math.min(M.w,h.parts[j-1].x1+1);
-      const sub=BCDetect.subMask(M,x0,x1,0,M.h);
-      const r=await ocrCanvas(toCanvas(BCDetect.ocrImage(sub,44)));
-      const t=r.text.replace(/[^0-9A-Za-z_]/g,'');
-      if(t)name+=t;else unknown++;
+      const t=await readLatin(BCDetect.subMask(M,x0,x1,0,M.h));
+      if(t){name+=t;shown+='['+t+']';}else{unknown++;shown+='?';}
       i=j;
     }
-    return {name,cands:h.parts.map(p=>p.known?p.ch:'?').join('')+(unknown?' (일부 못 읽음)':'')};
+    return {name,cands:shown+(unknown?' (일부 못 읽음)':'')};
   }
   async function readKor(p){
     if(p.korTried)return p.korText;
@@ -916,6 +977,7 @@ var BCDetect=(function(){
       const votes=Object.values(p.votes).sort((x,y)=>y.count-x.count||x.cost-y.cost);
       const win=votes[0]||{text:p.nameRead,mask:p.nickMask,gray:p.nickGray,count:1};
       p.nameRead=win.text;
+      const tv=Object.entries(p.timeVotes).sort((x,y)=>y[1]-x[1]);p.timeText=tv.length?tv[0][0]:'';
       let entry=auto.nicks.find(n=>BCDetect.similar(BCDetect.sigParse(n.s),p.nickSig)||nameClose(n.raw,win.text));
       let name=entry&&entry.name,cands='';
       if(!name){
@@ -942,7 +1004,9 @@ var BCDetect=(function(){
       setStatus(name+' 님 '+fmt(amount)+'원 수표를 처리했어요.');
     }finally{
       auto.processing=false;
-      if(!accepted&&!p.done&&auto.pending!==p)processCheck(p,true);
+      if(!accepted&&!p.done&&auto.pending!==p&&!auto.queue.includes(p))auto.queue.push(p);
+      const next=auto.queue.shift();
+      if(next&&!next.done)processCheck(next,true);
     }
   }
 
@@ -954,11 +1018,16 @@ var BCDetect=(function(){
     d.hidden=false;
     d.textContent='확인한 화면 '+frames+'장 · '+(r?('수표 발견: 금액 '+r.amountText):(WHY[BCDetect.why()]||'수표 툴팁 없음'));
   }
+  function finishLater(p){
+    if(auto.processing){if(!auto.queue.includes(p))auto.queue.push(p);}
+    else processCheck(p,true);
+  }
   function vote(p,r,h){
     const key=h.text;if(!key)return;
     const cost=h.parts.reduce((a,x)=>a+x.cost,0);
     const v=p.votes[key]||(p.votes[key]={text:key,count:0,cost:1e9,mask:null,gray:null});
     v.count++;if(cost<v.cost){v.cost=cost;v.mask=r.nickMask;v.gray=r.nickGray;}
+    if(r.timeText)p.timeVotes[r.timeText]=(p.timeVotes[r.timeText]||0)+1;
     p.voteFrames++;
   }
   function handle(r){
@@ -969,7 +1038,7 @@ var BCDetect=(function(){
     if(!valid||seenBefore(r)){
       // 툴팁이 사라짐(또는 이미 처리한 수표): 아직 처리 못 한 수표가 있으면 지금까지 본 걸로 마지막 판단
       const p=auto.pending;auto.pending=null;
-      if(p&&!p.done&&!auto.processing)processCheck(p,true);
+      if(p&&!p.done)finishLater(p);
       if(auto.stream)setPill('on',valid?'이미 처리한 수표':'인식 중');
       return;
     }
@@ -978,10 +1047,10 @@ var BCDetect=(function(){
       if(Math.min(...r.margins)>Math.min(...p.margins)){p.dists=r.dists;p.margins=r.margins;p.glyphs=r.glyphs;}
     }else{
       const old=auto.pending;
-      if(old&&!old.done&&!auto.processing)processCheck(old,true);
+      if(old&&!old.done)finishLater(old);
       if(old&&old.done&&sameCheck(old,r)){setPill('on','이미 처리한 수표');return;}
       const korMask=BCDetect.mask(lastImg,r.korRect.x0,r.korRect.y0,r.korRect.x1,r.korRect.y1,BCDetect.isLight);
-      auto.pending=Object.assign({},r,{count:1,votes:{},voteFrames:0,img:thumb(r),korMask,
+      auto.pending=Object.assign({},r,{count:1,votes:{},timeVotes:{},voteFrames:0,img:thumb(r),korMask,
         korGray:BCDetect.gray(lastImg,r.korRect.x0,r.korRect.y0,r.korRect.x1,r.korRect.y1),korImg:BCDetect.ocrImage(korMask,44)});
       vote(auto.pending,r,h);
     }
@@ -1017,6 +1086,7 @@ var BCDetect=(function(){
     wk.onmessage=tick;auto.timer=wk;
     $('autoBtn').textContent='자동 인식 중지';setPill('on','인식 중');
     setStatus('캡처 중이에요. 글자 인식 도구를 불러오는 중…');
+    loadLatin();
     loadOCR().then(()=>{
       if(!auto.stream)return;
       setStatus(auto.ocrState==='ready'?'캡처 중이에요. 머니 수표에 마우스를 올리면 자동으로 읽어요.':'글자 인식 도구를 불러오지 못했어요. 금액은 숫자 모양으로 읽고, 닉네임은 "참가자N"으로 넣어요. 인터넷 연결을 확인해 주세요.');

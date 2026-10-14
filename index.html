@@ -43,6 +43,7 @@ input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:1px;bo
 .chip:hover{border-color:var(--accent)}
 .chip.clear{background:transparent;color:var(--muted);font-family:var(--f-body)}
 button{font:inherit;font-weight:600;border-radius:8px;border:1px solid transparent;padding:10px 16px;cursor:pointer}
+button:disabled{opacity:.45;cursor:not-allowed}
 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .primary{background:var(--accent);color:var(--accent-ink)}
 .ghost{background:transparent;border-color:var(--line);color:var(--fg)}
@@ -135,8 +136,9 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     <p class="note" id="autoStatus">시작을 누르고 마인크래프트 창(또는 방송 탭)을 고르세요. 머니 수표에 마우스를 올리면 발행자와 금액을 읽어서 목록에 자동으로 넣어요.</p>
     <video id="autoVideo" muted playsinline hidden></video>
     <ul class="log" id="autoLog"></ul>
-    <div class="auto-row" id="logActs" hidden>
-      <button type="button" class="ghost" id="logSave">인식 기록 이미지로 저장</button>
+    <p class="note" id="autoDebug" hidden></p>
+    <div class="auto-row" id="logActs">
+      <button type="button" class="ghost" id="logSave" disabled>인식 기록 이미지로 저장</button>
       <button type="button" class="ghost" id="logClear">기록 지우기</button>
       <button type="button" class="ghost warn" id="autoForget">인식 데이터 초기화</button>
     </div>
@@ -652,7 +654,7 @@ var BCDetect=(function(){
       li.querySelector('.lm').textContent=e.meta||'';
       ul.appendChild(li);
     });
-    $('logActs').hidden=auto.log.length===0;
+    $('logSave').disabled=auto.log.length===0;
   }
 
   async function processCheck(p){
@@ -696,7 +698,16 @@ var BCDetect=(function(){
     }finally{auto.processing=false;}
   }
 
+  const WHY={orange:'금액 글자(주황색)를 못 찾음',nomax:'금액 글자를 못 찾음',segs:'금액 글자를 못 찾음',amt:'금액 숫자를 못 읽음',gh:'글자가 너무 작음',green:'수표 위쪽 초록 줄을 못 찾음',yellow:'한글 금액·발행 시각 줄을 못 찾음',white:'발행자 줄을 못 찾음'};
+  let frames=0;
+  function debugLine(r){
+    frames++;const d=$('autoDebug');
+    if(!$('autoTest').checked||!auto.stream){d.hidden=true;return;}
+    d.hidden=false;
+    d.textContent='확인한 화면 '+frames+'장 · '+(r?('수표 발견: 금액 '+r.amountText):(WHY[BCDetect.why()]||'수표 툴팁 없음'));
+  }
   function handle(r){
+    debugLine(r);
     if(!r||!BCDetect.validAmount(r.amountText)){auto.pending=null;if(auto.stream)setPill('on','인식 중');return;}
     if(seenBefore(r)){auto.pending=null;setPill('on','이미 처리한 수표');return;}
     if(auto.pending&&sameCheck(auto.pending,r)){auto.pending.count++;}

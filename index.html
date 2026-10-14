@@ -1,0 +1,773 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>공 개수 정리판</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=IBM+Plex+Sans+KR:wght@400;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: 한 열 작업대 — 설정 줄, 입력 줄, 합계 줄, 직접 고칠 수 있는 목록 박스 순서 */
+:root{
+  --bg:#eef1f4; --panel:#ffffff; --fg:#1d2430; --muted:#5f6b7a; --line:#d5dbe3;
+  --accent:#2f6fd6; --accent-ink:#ffffff; --ball:#e8b73a; --danger:#c43d3d; --soft:#e6edf8;
+  --f-display:"Gowun Dodum","IBM Plex Sans KR",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans KR",system-ui,-apple-system,"Malgun Gothic",sans-serif;
+  --f-num:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12161c; --panel:#1b2129; --fg:#e7ebf0; --muted:#94a0ae; --line:#2e3742;
+  --accent:#6a9cf0; --accent-ink:#0d1420; --ball:#f0c552; --danger:#ec6f6f; --soft:#1f2a3a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12161c; --panel:#1b2129; --fg:#e7ebf0; --muted:#94a0ae; --line:#2e3742;
+  --accent:#6a9cf0; --accent-ink:#0d1420; --ball:#f0c552; --danger:#ec6f6f; --soft:#1f2a3a; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 40px}
+.wrap{max-width:620px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+h1{font-family:var(--f-display);font-size:1.7rem;margin:0;text-wrap:balance;display:flex;align-items:center;gap:10px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+#themeBtn{padding:6px 12px;font-size:.85rem}
+h1 .dot{width:22px;height:22px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff8 0 20%,transparent 22%),var(--ball);flex:none}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px}
+label{font-size:.78rem;font-weight:600;color:var(--muted);letter-spacing:.04em}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+input,textarea{font:inherit;font-size:1rem;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;width:100%;box-sizing:border-box}
+input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+.price-row{display:flex;align-items:center;gap:10px}
+.price-row input{max-width:200px;text-align:right}
+.price-row span{color:var(--muted)}
+.add{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end}
+.add input#money{text-align:right}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-family:var(--f-num);font-size:.85rem;padding:6px 12px;border-radius:999px;background:var(--soft);color:var(--fg);border:1px solid var(--line)}
+.chip:hover{border-color:var(--accent)}
+.chip.clear{background:transparent;color:var(--muted);font-family:var(--f-body)}
+button{font:inherit;font-weight:600;border-radius:8px;border:1px solid transparent;padding:10px 16px;cursor:pointer}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.primary{background:var(--accent);color:var(--accent-ink)}
+.ghost{background:transparent;border-color:var(--line);color:var(--fg)}
+.ghost.warn{color:var(--danger)}
+.preview{font-size:.85rem;color:var(--muted);min-height:1.3em}
+.preview b{color:var(--fg)}
+.msg{font-size:.85rem;color:var(--danger)}
+.totals{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tot{background:var(--soft);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+.tot .v{font-family:var(--f-num);font-size:1.6rem;font-weight:600;font-variant-numeric:tabular-nums}
+.tot .k{font-size:.78rem;color:var(--muted);font-weight:600;letter-spacing:.04em}
+.box-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.box-head h2{font-size:1rem;margin:0}
+.box-head .acts{display:flex;gap:8px;flex-wrap:wrap}
+.box-head button{padding:6px 12px;font-size:.85rem}
+#box{border:2px solid var(--fg);border-radius:10px;background:var(--panel);min-height:140px;resize:vertical;
+  font-size:1.1rem;font-weight:600;line-height:1.8;padding:12px 16px}
+#box::placeholder{color:var(--muted);font-weight:400}
+.note{font-size:.8rem;color:var(--muted);margin:0}
+.warnline{font-size:.82rem;color:var(--danger);margin:0}
+[hidden]{display:none!important}
+.price-row button{padding:9px 16px}
+.price-row input.pending{outline:2px dashed var(--ball);outline-offset:1px}
+.rem{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:10px}
+.rem:empty{display:none}
+.rem li{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline;padding:9px 14px;border-bottom:1px solid var(--line)}
+.rem li:last-child{border-bottom:0}
+.rem .nm{font-weight:600;flex:1;min-width:8em;overflow-wrap:anywhere}
+.rem .amt{font-family:var(--f-num);font-variant-numeric:tabular-nums;font-size:.92rem}
+.rem .need{color:var(--accent)}
+.auto-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.check{display:flex;gap:6px;align-items:center;font-size:.88rem;font-weight:400;color:var(--fg);letter-spacing:0;cursor:pointer}
+.check input{width:auto}
+.pill{font-size:.78rem;font-weight:600;padding:3px 10px;border-radius:999px;background:var(--soft);color:var(--muted)}
+.pill[data-state="on"]{background:var(--accent);color:var(--accent-ink)}
+.pill[data-state="busy"]{background:var(--ball);color:#2a1d00}
+.pill[data-state="err"]{background:var(--danger);color:#fff}
+#autoVideo{width:220px;max-width:100%;border-radius:8px;border:1px solid var(--line);background:#000}
+.log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;max-height:420px;overflow:auto}
+.log:empty{display:none}
+.log li{display:grid;grid-template-columns:minmax(0,150px) 1fr;gap:10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px}
+.log img{width:100%;border-radius:6px;image-rendering:pixelated;background:#000}
+.log .lt{display:flex;flex-direction:column;gap:2px;min-width:0;font-size:.88rem}
+.log .ln{font-weight:700;overflow-wrap:anywhere}
+.log .la{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+.log .lm{color:var(--muted);font-size:.78rem}
+.tag{display:inline-block;font-size:.72rem;font-weight:700;padding:1px 8px;border-radius:999px;margin-right:6px;background:var(--soft);color:var(--fg)}
+.tag.ok{background:var(--accent);color:var(--accent-ink)}
+.tag.fail{background:var(--danger);color:#fff}
+.modal{position:fixed;inset:0;background:rgba(10,14,20,.55);display:flex;align-items:center;justify-content:center;z-index:10;
+  padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.modal-card{background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:14px;padding:20px;max-width:380px;width:100%;display:flex;flex-direction:column;gap:12px;box-shadow:0 12px 40px rgba(0,0,0,.25)}
+.modal-card h3{margin:0;font-size:1.1rem}
+.modal-card p{margin:0;color:var(--muted);line-height:1.6}
+.modal-card p b{color:var(--fg)}
+.modal-acts{display:flex;gap:8px;justify-content:flex-end}
+.confirm{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:.9rem;font-weight:600;
+  background:var(--soft);border:1px solid var(--danger);border-radius:8px;padding:8px 12px}
+@media (max-width:480px){.add{grid-template-columns:1fr 1fr}.add button{grid-column:1/-1}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="top">
+    <h1><span class="dot" aria-hidden="true"></span>공 개수 정리판</h1>
+    <button type="button" class="ghost" id="themeBtn">화면: 자동</button>
+  </div>
+
+  <section class="panel">
+    <div class="field">
+      <label for="price">공 1개당 가격</label>
+      <form id="priceForm" class="price-row" autocomplete="off">
+        <input id="price" class="num" lang="ko" value="1,000"><span>원</span>
+        <button type="submit" class="primary" id="priceBtn">완료</button>
+      </form>
+    </div>
+    <p class="note" id="priceState"></p>
+  </section>
+
+  <section class="panel auto" id="autoPanel">
+    <div class="box-head">
+      <h2>수표 자동 인식</h2>
+      <span class="pill" id="autoPill" data-state="off">꺼짐</span>
+    </div>
+    <div class="auto-row">
+      <button type="button" class="primary" id="autoBtn">자동 인식 시작</button>
+      <label class="check"><input type="checkbox" id="autoTest"> 테스트 모드 (목록에 넣지 않고 기록만)</label>
+    </div>
+    <p class="note" id="autoStatus">시작을 누르고 마인크래프트 창(또는 방송 탭)을 고르세요. 머니 수표에 마우스를 올리면 발행자와 금액을 읽어서 목록에 자동으로 넣어요.</p>
+    <video id="autoVideo" muted playsinline hidden></video>
+    <ul class="log" id="autoLog"></ul>
+    <div class="auto-row" id="logActs" hidden>
+      <button type="button" class="ghost" id="logSave">인식 기록 이미지로 저장</button>
+      <button type="button" class="ghost" id="logClear">기록 지우기</button>
+      <button type="button" class="ghost warn" id="autoForget">인식 데이터 초기화</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <form id="addForm" class="add" autocomplete="off">
+      <div class="field"><label for="nick">닉네임</label><input id="nick" lang="ko" placeholder="닉네임"></div>
+      <div class="field"><label for="money">받은 돈 (원)</label><input id="money" lang="ko" placeholder="예: 500만"></div>
+      <button type="submit" class="primary">추가</button>
+    </form>
+    <div class="chips" aria-label="금액 빠르게 더하기">
+      <button type="button" class="chip" data-add="1000000">+100만</button>
+      <button type="button" class="chip" data-add="5000000">+500만</button>
+      <button type="button" class="chip" data-add="10000000">+1000만</button>
+      <button type="button" class="chip" data-add="100000000">+1억</button>
+      <button type="button" class="chip" id="chipBall">+공 1개</button>
+      <button type="button" class="chip clear" id="chipClear">지우기</button>
+    </div>
+    <div class="preview" id="preview"></div>
+    <div class="msg" id="msg" hidden></div>
+    <p class="note">같은 닉네임을 다시 입력하면 공 개수가 합쳐져요. Enter로도 추가됩니다.</p>
+  </section>
+
+  <section class="totals">
+    <div class="tot"><span class="k">현재까지 공 개수</span><span class="v" id="totBalls">0</span></div>
+    <div class="tot"><span class="k">받은 돈 합계</span><span class="v" id="totMoney">0원</span></div>
+  </section>
+
+  <section class="panel" style="gap:10px">
+    <div class="box-head">
+      <h2>닉네임 / 공 개수</h2>
+      <div class="acts">
+        <button type="button" class="ghost" id="copyBtn">목록 복사</button>
+        <button type="button" class="ghost warn" id="resetBtn">전체 초기화</button>
+      </div>
+    </div>
+    <div class="confirm" id="confirm" hidden>
+      <span>목록을 모두 지울까요?</span>
+      <button type="button" class="ghost warn" id="yesReset">지우기</button>
+      <button type="button" class="ghost" id="noReset">취소</button>
+    </div>
+    <textarea id="box" lang="ko" spellcheck="false" aria-label="닉네임/공 개수 목록" placeholder="예: 김민교/3, 모치/4, 꼼모리/3"></textarea>
+    <p class="warnline" id="badLine" hidden></p>
+    <p class="note">박스 안 글자를 직접 지우거나 고쳐 쓸 수 있어요. <b>닉네임/숫자</b>를 쉼표로 구분하면 합계에 바로 반영돼요. 받은 돈 합계는 공 개수 × 공 1개당 가격이에요.</p>
+    <p class="note">기록은 이 브라우저에만 저장돼요.</p>
+  </section>
+
+  <section class="panel" style="gap:10px">
+    <div class="box-head">
+      <h2>남은 돈 (공 1개 미만)</h2>
+      <div class="acts"><button type="button" class="ghost" id="clearRem">남은 돈 목록 비우기</button></div>
+    </div>
+    <ul class="rem" id="remList"></ul>
+    <p class="note" id="remEmpty">공 1개 가격으로 나누어떨어지지 않고 남는 돈이 여기에 표시돼요. 자동 인식으로 받은 돈과 가격 변경 후 다시 계산한 결과가 들어와요.</p>
+  </section>
+</div>
+
+<div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal-card">
+    <h3 id="modalTitle">공 개수를 다시 계산할까요?</h3>
+    <p id="modalText"></p>
+    <div class="modal-acts">
+      <button type="button" class="primary" id="modalYes">예</button>
+      <button type="button" class="ghost" id="modalNo">아니요</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* 머니 수표 툴팁 인식 — 화면 픽셀만으로 동작하는 순수 함수 모음 */
+var BCDetect=(function(){
+  var BASE={"2":["11111000110001111111111101100011111"],"6":["11100110001111111011110111101111111","11110110001111111111110111101111111"],"8":["11111110111111111011110111101111111"],"7":["11111111111111101110011000110001000"],"9":["11111110111101111011111110001101111"],"5":["11111110001111011111000111101111111","11111110001111101111000111101111111","11110110001111001111000111101111111"],"0":["11111111111101111011110111101111111","11111110111101111011110111101111111"],"3":["11111111110011100111000111111111111"],"4":["11000110101101111111000110001000010"],"1":["11100011000110001100011000110011111","11110011100111001110011100111011111"]};
+  var T={};
+  function resetTemplates(extra){
+    T={};
+    Object.keys(BASE).forEach(function(k){T[k]=BASE[k].map(toBits);});
+    if(extra)Object.keys(extra).forEach(function(k){(T[k]=T[k]||[]);extra[k].forEach(function(s){T[k].push(toBits(s));});});
+  }
+  function toBits(s){var a=new Uint8Array(s.length);for(var i=0;i<s.length;i++)a[i]=s.charCodeAt(i)-48;return a;}
+  function bitsStr(a){var s='';for(var i=0;i<a.length;i++)s+=a[i];return s;}
+  resetTemplates();
+
+  // 색 판정
+  function isOrange(r,g,b){return r>225&&g>140&&g<195&&b<50;}
+  function isOrangeLoose(r,g,b){return r>190&&g>100&&b<100&&r-b>120;}
+  function isYellow(r,g,b){return r>190&&g>190&&((r+g)/2-b)>25;}
+  function isGreen(r,g,b){return g>140&&r<100&&b<100;}
+  function isWhite(r,g,b){return r>185&&g>185&&b>185&&((r+g)/2-b)<=25;}
+  function isLight(r,g,b){return r+g+b>330;}
+  function isDark(r,g,b){return r<75&&g<75&&b<75;}
+
+  // 영역 안의 마스크 만들기
+  function mask(img,x0,y0,x1,y1,fn){
+    x0=Math.max(0,x0|0);y0=Math.max(0,y0|0);x1=Math.min(img.width,x1|0);y1=Math.min(img.height,y1|0);
+    var w=Math.max(0,x1-x0),h=Math.max(0,y1-y0),m=new Uint8Array(w*h),d=img.data;
+    for(var y=0;y<h;y++)for(var x=0;x<w;x++){var i=((y+y0)*img.width+(x+x0))*4;m[y*w+x]=fn(d[i],d[i+1],d[i+2])?1:0;}
+    return {w:w,h:h,m:m,x0:x0,y0:y0};
+  }
+  function colsOf(M){var c=new Uint8Array(M.w);for(var y=0;y<M.h;y++)for(var x=0;x<M.w;x++)if(M.m[y*M.w+x])c[x]=1;return c;}
+  function segments(M){var c=colsOf(M),out=[],x=0;while(x<M.w){if(c[x]){var s=x;while(x<M.w&&c[x])x++;out.push([s,x]);}else x++;}return out;}
+  function rowRange(M,s,e){var a=-1,b=-1;for(var y=0;y<M.h;y++){for(var x=s;x<e;x++)if(M.m[y*M.w+x]){if(a<0)a=y;b=y;break;}}return [a,b];}
+  // 영역 평균으로 W×H 격자로 줄이기 (크기와 상관없이 모양만 남김)
+  function grid(M,s,e,ya,yb,W,H){
+    var gw=e-s,gh=yb-ya+1,out=new Uint8Array(W*H);
+    for(var gy=0;gy<H;gy++)for(var gx=0;gx<W;gx++){
+      var fx0=gx*gw/W,fx1=(gx+1)*gw/W,fy0=gy*gh/H,fy1=(gy+1)*gh/H,sum=0,area=0;
+      for(var y=Math.floor(fy0);y<Math.ceil(fy1);y++){var wy=Math.min(fy1,y+1)-Math.max(fy0,y);if(wy<=0)continue;
+        for(var x=Math.floor(fx0);x<Math.ceil(fx1);x++){var wx=Math.min(fx1,x+1)-Math.max(fx0,x);if(wx<=0)continue;
+          sum+=wx*wy*M.m[(ya+y)*M.w+(s+x)];area+=wx*wy;}}
+      out[gy*W+gx]=sum/area>0.5?1:0;}
+    return out;
+  }
+  function hamming(a,b){var d=0;for(var i=0;i<a.length;i++)if(a[i]!==b[i])d++;return d;}
+
+  // 숫자 줄 읽기: "10,000,000" → {text, dists, glyphs}
+  function readDigits(M,stopGapRatio){
+    var segs=segments(M);if(!segs.length){why='segs';return null;}
+    var info=segs.map(function(s){var r=rowRange(M,s[0],s[1]);return {s:s[0],e:s[1],a:r[0],b:r[1],h:r[1]-r[0]+1};});
+    var H=Math.max.apply(null,info.map(function(i){return i.h;}));
+    var keep=[info[0]];
+    for(var k=1;k<info.length;k++){if(info[k].s-keep[keep.length-1].e>H*(stopGapRatio||0.5))break;keep.push(info[k]);}
+    var text='',dists=[],glyphs=[];
+    keep.forEach(function(g){
+      if(g.h<H*0.65){text+=',';return;}
+      var v=grid(M,g.s,g.e,g.a,g.b,5,7),best=null,bd=99;
+      Object.keys(T).forEach(function(k){T[k].forEach(function(t){var d=hamming(v,t);if(d<bd){bd=d;best=k;}});});
+      text+=best;dists.push(bd);glyphs.push({ch:best,bits:bitsStr(v)});
+    });
+    return {text:text,dists:dists,glyphs:glyphs,H:H,end:keep[keep.length-1].e};
+  }
+
+  // 글자 모양 서명 (같은 닉네임/시각인지 비교용)
+  function signature(M){
+    var segs=segments(M);if(!segs.length)return null;
+    var s=segs[0][0],e=segs[segs.length-1][1],r=rowRange(M,s,e);if(r[0]<0)return null;
+    var h=r[1]-r[0]+1,W=Math.max(1,Math.round((e-s)*10/h));
+    return {w:W,bits:grid(M,s,e,r[0],r[1],W,10)};
+  }
+  function similar(a,b){
+    if(!a||!b)return a===b;
+    if(Math.abs(a.w-b.w)>Math.max(1,Math.round(a.w*0.06)))return false;
+    var W=Math.min(a.w,b.w),diff=0;
+    for(var y=0;y<10;y++)for(var x=0;x<W;x++)if(a.bits[y*a.w+x]!==b.bits[y*b.w+x])diff++;
+    return diff/(W*10)<0.14;
+  }
+  function sigStr(s){return s?s.w+':'+bitsStr(s.bits):'';}
+  function sigParse(t){if(!t)return null;var i=t.indexOf(':');return {w:+t.slice(0,i),bits:toBits(t.slice(i+1))};}
+
+  // 줄(band) 찾기: 조건에 맞는 픽셀이 있는 행 묶음
+  function bands(img,x0,x1,y0,y1,fn,minPx,merge){
+    var M=mask(img,x0,y0,x1,y1,fn),rows=[],out=[];
+    for(var y=0;y<M.h;y++){var c=0;for(var x=0;x<M.w;x++)c+=M.m[y*M.w+x];rows.push(c>=minPx);}
+    var y=0;while(y<rows.length){if(rows[y]){var s=y;while(y<rows.length&&rows[y])y++;out.push([s+M.y0,y+M.y0]);}else y++;}
+    if(merge){var mg=[];out.forEach(function(b){var l=mg[mg.length-1];if(l&&b[0]-l[1]<=merge)l[1]=b[1];else mg.push(b.slice());});out=mg;}
+    return out;
+  }
+
+  // 화면 한 장에서 수표 툴팁 찾기
+  var why='';function find(img){why='';
+    var W=img.width,H=img.height,d=img.data,step=2;
+    // 1) 주황 금액 글자가 가장 많이 몰린 행
+    var rows=new Uint32Array(H);
+    for(var y=0;y<H;y++){var c=0,base=y*W*4;for(var x=0;x<W;x+=step){var i=base+x*4;if(isOrange(d[i],d[i+1],d[i+2]))c++;}rows[y]=c;}
+    var best=-1,bv=0;
+    for(var y2=0;y2<H;y2++){var s=0;for(var k=-6;k<6;k++){var yy=y2+k;if(yy>=0&&yy<H)s+=rows[yy];}if(s>bv){bv=s;best=y2;}}
+    if(bv<15){why='orange';return null;}
+    // 2) 그 줄의 주황 픽셀 범위
+    var ys0=Math.max(0,best-16),ys1=Math.min(H,best+16),minx=W,maxx=-1,miny=H,maxy=-1;
+    for(var y3=ys0;y3<ys1;y3++)for(var x3=0;x3<W;x3++){var j=(y3*W+x3)*4;if(isOrange(d[j],d[j+1],d[j+2])){if(x3<minx)minx=x3;if(x3>maxx)maxx=x3;if(y3<miny)miny=y3;if(y3>maxy)maxy=y3;}}
+    if(maxx<0){why='nomax';return null;}
+    // 주황 픽셀이 너무 넓게 흩어져 있으면 금액이 아님: 가장 촘촘한 묶음만
+    var M=mask(img,minx-3,miny-3,maxx+4,maxy+4,isOrangeLoose);
+    var segs=segments(M);if(!segs.length)return null;
+    // 금액은 가장 왼쪽 묶음부터 이어지는 글자들
+    var amt=readDigits(M,0.5);if(!amt){why='amt';return null;}
+    var gh=amt.H,ax0=M.x0+segs[0][0],ax1=M.x0+amt.end,ay0=M.y0,ay1=M.y0+M.h;
+    if(gh<6){why='gh';return null;}
+    // 3) 툴팁 오른쪽 끝: 어두운 배경이 끝나는 곳
+    var cy=Math.round((miny+maxy)/2),rx=ax1,gap=0;
+    while(rx<W-1){rx++;var q=(cy*W+rx)*4;if(!isDark(d[q],d[q+1],d[q+2])&&!isOrangeLoose(d[q],d[q+1],d[q+2])&&!isYellow(d[q],d[q+1],d[q+2]))gap++;else gap=0;if(gap>gh*1.2)break;}
+    var right=Math.min(W,rx-gap+2);
+    // 4) 위쪽 초록 줄(◆ 그낭뱅크 인증 수표 ◆) 확인
+    var gb=bands(img,ax0-gh*8,right,ay0-gh*3,ay0,isGreen,2);
+    if(!gb.length){why='green';return null;}
+    // 5) 아래쪽 노란 줄 두 개(한글 금액, 발행 시각)
+    var colR=Math.min(right,ax0+gh*12);var yb0=bands(img,ax0-4,colR,ay1,ay1+gh*7,isYellow,2,Math.max(1,Math.round(gh*0.3)));var yb=yb0.filter(function(b){return b[1]-b[0]>=gh*0.4;});
+    if(yb.length<2){why='yellow';return null;}
+    var kor=yb[0],time=yb[1];
+    // 6) 그 사이 흰 줄 = 발행자
+    var wb=bands(img,ax0-4,colR,kor[1],time[0],isWhite,1,Math.max(1,Math.round(gh*0.3))).filter(function(b){return b[1]-b[0]>=gh*0.3;});
+    if(!wb.length){why='white';return null;}
+    var nickB=wb.reduce(function(a,b){return (b[1]-b[0])>(a[1]-a[0])?b:a;});
+    var pad=Math.round(gh*0.25);
+    var nickR={x0:ax0-4,y0:nickB[0]-pad,x1:Math.min(right,ax0+gh*16),y1:nickB[1]+pad};
+    var korR={x0:ax0-4,y0:kor[0]-pad,x1:Math.min(right,ax0+gh*12),y1:kor[1]+pad};
+    var timeR={x0:ax0-4,y0:time[0]-pad,x1:Math.min(right,ax0+gh*13),y1:time[1]+pad};
+    var nickM=mask(img,nickR.x0,nickR.y0,nickR.x1,nickR.y1,isLight);
+    nickM=trimGap(nickM,gh*1.5);var timeM=mask(img,timeR.x0,timeR.y0,timeR.x1,timeR.y1,isYellow);
+    var top=gb[0][0]-gh*2,left=Math.max(0,ax0-gh*9);
+    return {
+      amountText:amt.text,dists:amt.dists,glyphs:amt.glyphs,gh:gh,
+      box:{x0:left,y0:Math.max(0,top),x1:right,y1:Math.min(H,timeR.y1+gh)},
+      nickRect:nickR,korRect:korR,nickMask:nickM,
+      nickSig:signature(nickM),timeSig:signature(timeM)
+    };
+  }
+
+  function trimGap(M,g){var segs=segments(M);if(!segs.length)return M;var end=segs[0][1];
+    for(var i=1;i<segs.length;i++){if(segs[i][0]-end>g)break;end=segs[i][1];}
+    for(var y=0;y<M.h;y++)for(var x=end;x<M.w;x++)M.m[y*M.w+x]=0;return M;}
+  function validAmount(t){return /^\d{1,3}(,\d{3})*$/.test(t);}
+  // 흑백 OCR용 이미지 데이터 (검은 글자/흰 바탕, 확대)
+  function ocrImage(M,targetH){
+    var r=rowRange(M,0,M.w),h=Math.max(1,r[1]-r[0]+1),sc=Math.max(1,Math.round((targetH||48)/h)),p=16;
+    var W=M.w*sc+p*2,H=M.h*sc+p*2,out=new Uint8ClampedArray(W*H*4);
+    for(var i=0;i<W*H;i++){out[i*4]=out[i*4+1]=out[i*4+2]=255;out[i*4+3]=255;}
+    for(var y=0;y<M.h;y++)for(var x=0;x<M.w;x++)if(M.m[y*M.w+x])
+      for(var dy=0;dy<sc;dy++)for(var dx=0;dx<sc;dx++){var k=((p+y*sc+dy)*W+(p+x*sc+dx))*4;out[k]=out[k+1]=out[k+2]=0;}
+    return {width:W,height:H,data:out};
+  }
+  return {why:function(){return why;},find:find,mask:mask,isLight:isLight,isWhite:isWhite,isYellow:isYellow,validAmount:validAmount,similar:similar,
+    sigStr:sigStr,sigParse:sigParse,ocrImage:ocrImage,resetTemplates:resetTemplates};
+})();
+
+</script>
+<script>
+(function(){
+  const KEY='ballCounter.v2';
+  const $=id=>document.getElementById(id);
+  const fmt=n=>Number(n||0).toLocaleString('ko-KR');
+  const parseNum=s=>{const d=String(s).replace(/[^\d]/g,'');return d?parseInt(d,10):0};
+
+  let state={price:1000,text:''};
+  try{
+    const s=JSON.parse(localStorage.getItem(KEY));
+    if(s&&typeof s.text==='string')state=s;
+    else{
+      const old=JSON.parse(localStorage.getItem('ballCounter.v1'));
+      if(old&&Array.isArray(old.rows)){
+        state.price=old.price||1000;
+        state.text=old.rows.filter(r=>!String(r.nick).startsWith('예시_'))
+          .map(r=>r.nick+'/'+(state.price?Math.floor(r.money/state.price):0)).join(', ');
+      }
+    }
+  }catch(e){}
+  if(!state.rems||typeof state.rems!=='object')state.rems={};
+  function save(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}}
+
+  // "닉네임/숫자" 항목을 쉼표·줄바꿈으로 나눠 읽기. 닉네임에 /가 있어도 마지막 / 기준.
+  function parseBox(text){
+    const items=[],bad=[];
+    text.split(/[,，\n]/).map(s=>s.trim()).filter(Boolean).forEach(seg=>{
+      const i=seg.lastIndexOf('/');
+      const nick=i>0?seg.slice(0,i).trim():'';
+      const numStr=i>=0?seg.slice(i+1).trim():'';
+      if(nick&&/^\d+$/.test(numStr.replace(/,/g,'')))items.push({nick,balls:parseInt(numStr.replace(/,/g,''),10)});
+      else bad.push(seg);
+    });
+    return {items,bad};
+  }
+  const toText=items=>items.map(r=>r.nick+'/'+r.balls).join(', ');
+
+  const price=$('price'),nick=$('nick'),money=$('money'),box=$('box');
+  price.value=fmt(state.price);
+  box.value=state.text;
+
+  function commaInput(el){
+    // 한글 조합 중에는 값을 건드리지 않아 입력기가 끊기지 않게 함
+    el.addEventListener('compositionend',()=>el.dispatchEvent(new Event('input')));
+    el.addEventListener('input',e=>{
+      if(e.isComposing)return;
+      const n=parseNum(el.value);
+      if(el.value===(el.value.trim()===''?'':fmt(n)))return;
+      el.value=el.value.trim()===''?'':fmt(n);
+      el.setSelectionRange(el.value.length,el.value.length);
+    });
+  }
+  commaInput(price);
+
+  // 받은 돈: 숫자, 쉼표, 한글 단위(만·억·천·백·십), 한글 숫자(오백만 등) 모두 허용
+  function parseAmount(s){
+    s=String(s).replace(/골드|원|gold/gi,'').replace(/[\s,_]/g,'');
+    if(!s)return 0;
+    if(/^\d+$/.test(s))return parseInt(s,10);
+    const dig={영:0,공:0,일:1,이:2,삼:3,사:4,오:5,육:6,칠:7,팔:8,구:9};
+    const small={십:10,백:100,천:1000},big={만:1e4,억:1e8,조:1e12};
+    let total=0,section=0,cur=null,i=0;
+    while(i<s.length){
+      const m=s.slice(i).match(/^\d+(\.\d+)?/);
+      if(m){cur=parseFloat(m[0]);i+=m[0].length;continue;}
+      const c=s[i++];
+      if(c in dig)cur=dig[c];
+      else if(c in small){section+=(cur===null?1:cur)*small[c];cur=null;}
+      else if(c in big){section+=(cur===null?0:cur);if(!section)section=1;total+=section*big[c];section=0;cur=null;}
+      else return NaN;
+    }
+    return Math.round(total+section+(cur===null?0:cur));
+  }
+
+  document.querySelectorAll('.chip[data-add]').forEach(b=>b.onclick=()=>{
+    const cur=parseAmount(money.value)||0;
+    money.value=fmt(cur+Number(b.dataset.add));updatePreview();
+  });
+  $('chipBall').onclick=()=>{
+    const cur=parseAmount(money.value)||0;
+    money.value=fmt(cur+state.price);updatePreview();
+  };
+  $('chipClear').onclick=()=>{money.value='';updatePreview();money.focus();};
+
+  function updateTotals(){
+    const {items,bad}=parseBox(box.value);
+    const tb=items.reduce((a,r)=>a+r.balls,0);
+    $('totBalls').textContent=fmt(tb);
+    $('totMoney').textContent=fmt(tb*state.price)+'원';
+    const b=$('badLine');
+    if(bad.length){b.textContent='계산에서 빠진 항목: '+bad.join(', ')+' (닉네임/숫자 형식으로 써 주세요)';b.hidden=false;}
+    else b.hidden=true;
+  }
+
+  function updatePreview(){
+    const m=parseAmount(money.value),p=$('preview');
+    if(Number.isNaN(m)){p.textContent='금액을 알아볼 수 없어요. 예: 5000000, 500만, 1억 2000만';return;}
+    if(!m||!state.price){p.textContent='';return;}
+    p.innerHTML='= <b class="num">'+fmt(m)+'</b>원 → 공 <b class="num">'+fmt(Math.floor(m/state.price))+'</b>개'+(m%state.price?' · 남는 금액 '+fmt(m%state.price)+'원':'');
+  }
+
+  // 공 1개당 가격: 완료 버튼(또는 Enter)을 눌러야 적용
+  function showPriceState(){
+    const typed=parseNum(price.value),pending=typed!==state.price;
+    price.classList.toggle('pending',pending);
+    $('priceState').textContent='현재 적용 중: '+fmt(state.price)+'원'+(pending?' · 완료를 눌러야 바뀐 가격이 적용돼요':'');
+  }
+  price.addEventListener('input',showPriceState);
+
+  let pendingPrice=0;
+  $('priceForm').addEventListener('submit',e=>{
+    e.preventDefault();
+    const np=parseNum(price.value);
+    if(!np){price.value=fmt(state.price);showPriceState();return;}
+    if(np===state.price){showPriceState();return;}
+    const {items}=parseBox(box.value);
+    if(!items.length){setPrice(np);return;}
+    pendingPrice=np;
+    $('modalText').innerHTML='공 1개당 가격이 <b>'+fmt(state.price)+'원</b>에서 <b>'+fmt(np)+'원</b>으로 바뀌어요.<br>'+
+      '목록에 있는 공 개수를 바뀐 가격에 맞게 다시 계산할까요?<br>'+
+      '<span style="font-size:.85em">아니요를 누르면 가격만 바뀌고 목록은 그대로예요.</span>';
+    $('modal').hidden=false;$('modalYes').focus();
+  });
+
+  function setPrice(np){state.price=np;price.value=fmt(np);save();showPriceState();updateTotals();updatePreview();renderRems();}
+
+  $('modalNo').onclick=()=>{$('modal').hidden=true;setPrice(pendingPrice);};
+  $('modalYes').onclick=()=>{
+    $('modal').hidden=true;
+    const oldP=state.price,np=pendingPrice;
+    const {items,bad}=parseBox(box.value);
+    const rems={};
+    items.forEach(r=>{
+      const total=r.balls*oldP+(state.rems[r.nick]||0);
+      r.balls=Math.floor(total/np);
+      const left=total%np;
+      if(left)rems[r.nick]=left;
+    });
+    state.rems=rems;
+    box.value=toText(items)+(bad.length?', '+bad.join(', '):'');
+    state.text=box.value;
+    setPrice(np);
+  };
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('modal').hidden)$('modal').hidden=true;});
+
+  // 남은 돈 목록: 닉네임 - 남은 돈 - 공 1개 더 받으려면 필요한 돈
+  function renderRems(){
+    const list=$('remList');list.innerHTML='';
+    const names=new Set(parseBox(box.value).items.map(r=>r.nick));
+    Object.keys(state.rems).forEach(n=>{
+      const left=state.rems[n];
+      if(!left||!names.has(n))return;
+      const li=document.createElement('li');
+      const need=state.price-left;
+      li.innerHTML='<span class="nm"></span><span class="amt"></span><span class="amt need"></span>';
+      li.querySelector('.nm').textContent=n;
+      li.querySelector('.amt').textContent='남은 돈 '+fmt(left)+'원';
+      li.querySelector('.need').textContent=need>0?'공 1개 추가까지 '+fmt(need)+'원':'공 1개 추가 가능';
+      list.appendChild(li);
+    });
+    $('remEmpty').hidden=list.children.length>0;
+  }
+  $('clearRem').onclick=()=>{state.rems={};save();renderRems();};
+
+  money.addEventListener('input',updatePreview);
+  box.addEventListener('input',()=>{state.text=box.value;save();updateTotals();renderRems();});
+
+  $('addForm').addEventListener('submit',e=>{
+    e.preventDefault();
+    const msg=$('msg');msg.hidden=true;
+    const n=nick.value.trim().replace(/[,，\n]/g,' '),m=parseAmount(money.value);
+    if(!state.price){msg.textContent='공 1개당 가격을 먼저 입력하세요.';msg.hidden=false;return;}
+    if(!n){msg.textContent='닉네임을 입력하세요.';msg.hidden=false;nick.focus();return;}
+    if(Number.isNaN(m)){msg.textContent='금액을 알아볼 수 없어요. 예: 5000000, 500만, 1억 2000만';msg.hidden=false;money.focus();return;}
+    if(!m){msg.textContent='받은 돈을 입력하세요.';msg.hidden=false;money.focus();return;}
+    const add=Math.floor(m/state.price);
+    if(!add){msg.textContent='받은 돈이 공 1개 가격보다 적어요.';msg.hidden=false;return;}
+    const {items,bad}=parseBox(box.value);
+    const ex=items.find(r=>r.nick===n);
+    if(ex)ex.balls+=add;else items.push({nick:n,balls:add});
+    box.value=toText(items)+(bad.length?', '+bad.join(', '):'');
+    state.text=box.value;save();
+    nick.value='';money.value='';nick.focus();
+    updateTotals();updatePreview();
+  });
+
+  $('resetBtn').onclick=()=>{$('confirm').hidden=false;};
+  $('noReset').onclick=()=>{$('confirm').hidden=true;};
+  $('yesReset').onclick=()=>{box.value='';state.text='';state.rems={};save();updateTotals();renderRems();$('confirm').hidden=true;
+    auto.seen=[];auto.save();};
+
+  $('copyBtn').onclick=async()=>{
+    const btn=$('copyBtn');
+    try{await navigator.clipboard.writeText(box.value);btn.textContent='복사됨';}
+    catch(e){box.select();btn.textContent='Ctrl+C로 복사';}
+    setTimeout(()=>btn.textContent='목록 복사',1500);
+  };
+
+  // 화면 모드: 자동(기기 설정 따라감) → 라이트 → 다크
+  const THEME_KEY='ballCounter.theme';
+  const themes=['auto','light','dark'],labels={auto:'화면: 자동',light:'화면: 라이트',dark:'화면: 다크'};
+  let theme='auto';
+  try{theme=localStorage.getItem(THEME_KEY)||'auto';}catch(e){}
+  function applyTheme(){
+    if(theme==='auto')document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme',theme);
+    $('themeBtn').textContent=labels[theme]||labels.auto;
+  }
+  $('themeBtn').onclick=()=>{
+    theme=themes[(themes.indexOf(theme)+1)%themes.length];
+    try{localStorage.setItem(THEME_KEY,theme);}catch(e){}
+    applyTheme();
+  };
+  applyTheme();
+
+  /* ───── 수표 자동 인식 ───── */
+  // 자동으로 들어온 돈: 남은 돈과 합쳐서 공으로 바꾸고, 남는 돈은 남은 돈 목록에
+  function autoAdd(name,amount){
+    const total=amount+(state.rems[name]||0);
+    const add=state.price>0?Math.floor(total/state.price):0,left=state.price>0?total%state.price:total;
+    if(left)state.rems[name]=left;else delete state.rems[name];
+    const {items,bad}=parseBox(box.value);
+    const ex=items.find(r=>r.nick===name);
+    if(ex)ex.balls+=add;else items.push({nick:name,balls:add});
+    box.value=toText(items)+(bad.length?', '+bad.join(', '):'');
+    state.text=box.value;save();updateTotals();renderRems();
+    return {add,left};
+  }
+
+  const auto={
+    stream:null,track:null,ic:null,timer:null,busy:false,processing:false,pending:null,
+    seen:[],nicks:[],learned:{},log:[],ocr:null,ocrState:'none',
+    load(){
+      try{const s=JSON.parse(localStorage.getItem('ballCounter.auto')||'{}');
+        this.seen=s.seen||[];this.nicks=s.nicks||[];this.learned=s.learned||{};}catch(e){}
+      if(window.BCDetect)BCDetect.resetTemplates(this.learned);
+    },
+    save(){try{localStorage.setItem('ballCounter.auto',JSON.stringify({seen:this.seen.slice(-300),nicks:this.nicks.slice(-500),learned:this.learned}));}catch(e){}}
+  };
+  auto.load();
+
+  const video=$('autoVideo'),canvas=document.createElement('canvas'),ctx=canvas.getContext('2d',{willReadFrequently:true});
+  function setPill(state,text){const p=$('autoPill');p.dataset.state=state;p.textContent=text;}
+  function setStatus(t){$('autoStatus').textContent=t;}
+
+  function loadScript(src){return new Promise((ok,no)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=no;document.head.appendChild(s);});}
+  async function loadOCR(){
+    if(auto.ocrState!=='none')return;
+    auto.ocrState='loading';
+    try{
+      if(!window.Tesseract)await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js');
+      auto.ocr=await Tesseract.createWorker(['kor','eng'],1);
+      await auto.ocr.setParameters({tessedit_pageseg_mode:'7'});
+      auto.ocrState='ready';
+    }catch(e){auto.ocrState='failed';}
+  }
+  function toCanvas(o){const c=document.createElement('canvas');c.width=o.width;c.height=o.height;c.getContext('2d').putImageData(new ImageData(o.data,o.width,o.height),0,0);return c;}
+  async function ocrText(o){
+    if(auto.ocrState!=='ready')return '';
+    try{const r=await auto.ocr.recognize(toCanvas(o));return (r.data.text||'').trim();}catch(e){return '';}
+  }
+  function cleanName(t){return t.replace(/\s+/g,'').replace(/[^0-9A-Za-z가-힣_]/g,'');}
+  function korToNumber(t){const s=t.replace(/\s+/g,'').replace(/골드.*$/,'').replace(/[^0-9일이삼사오육칠팔구십백천만억조영공]/g,'');const v=parseAmount(s);return Number.isNaN(v)||!v?null:v;}
+
+  function sameCheck(a,b){return a.amountText===b.amountText&&BCDetect.similar(a.nickSig,b.nickSig)&&BCDetect.similar(a.timeSig,b.timeSig);}
+  function seenBefore(r){return auto.seen.some(s=>s.a===r.amountText&&BCDetect.similar(BCDetect.sigParse(s.n),r.nickSig)&&BCDetect.similar(BCDetect.sigParse(s.t),r.timeSig));}
+  function markSeen(r){auto.seen.push({a:r.amountText,n:BCDetect.sigStr(r.nickSig),t:BCDetect.sigStr(r.timeSig)});auto.save();}
+
+  function thumb(r){
+    const b=r.box,w=b.x1-b.x0,h=b.y1-b.y0,sc=Math.min(1,300/w),c=document.createElement('canvas');
+    c.width=Math.round(w*sc);c.height=Math.round(h*sc);c.getContext('2d').drawImage(canvas,b.x0,b.y0,w,h,0,0,c.width,c.height);
+    return c.toDataURL('image/png');
+  }
+
+  function addLog(e){
+    auto.log.unshift(e);if(auto.log.length>60)auto.log.pop();renderLog();
+  }
+  function renderLog(){
+    const ul=$('autoLog');ul.innerHTML='';
+    auto.log.forEach(e=>{
+      const li=document.createElement('li');
+      li.innerHTML='<img alt=""><div class="lt"><div><span class="tag"></span><span class="ln"></span></div><div class="la"></div><div class="lm"></div></div>';
+      li.querySelector('img').src=e.img;
+      const tag=li.querySelector('.tag');tag.textContent=e.tag;tag.className='tag '+(e.kind||'');
+      li.querySelector('.ln').textContent=e.name||'';
+      li.querySelector('.la').textContent=e.line||'';
+      li.querySelector('.lm').textContent=e.meta||'';
+      ul.appendChild(li);
+    });
+    $('logActs').hidden=auto.log.length===0;
+  }
+
+  async function processCheck(p){
+    auto.processing=true;
+    try{
+      const amount=parseInt(p.amountText.replace(/,/g,''),10);
+      const maxDist=Math.max(...p.dists);
+      const korText=await ocrText(p.korImg);
+      const korVal=korToNumber(korText);
+      const matched=korVal===amount;
+      if(!matched){
+        // 한글 금액으로 확인이 안 되면 같은 결과가 여러 번 나올 때까지 기다림
+        if(maxDist>6||p.count<4){
+          if(p.count>=8){markSeen(p);addLog({img:p.img,tag:'읽기 실패',kind:'fail',name:'',line:'금액 '+p.amountText+' (확인 안 됨)',meta:'한글 금액 인식: '+(korText||'없음')+' · 목록에 넣지 않았어요'});}
+          return;
+        }
+      }
+      // 닉네임: 전에 본 모양이면 같은 이름, 처음이면 글자 읽기
+      let entry=auto.nicks.find(n=>BCDetect.similar(BCDetect.sigParse(n.s),p.nickSig));
+      let name=entry&&entry.name;
+      if(!name){
+        name=cleanName(await ocrText(p.nickImg));
+        if(!name)name='참가자'+(auto.nicks.length+1);
+        auto.nicks.push({s:BCDetect.sigStr(p.nickSig),name});
+      }
+      // 한글 금액과 맞은 숫자 모양은 기억해서 다음부터 더 정확하게
+      if(matched){
+        let changed=false;
+        p.glyphs.forEach((g,i)=>{if(p.dists[i]>0){const L=(auto.learned[g.ch]=auto.learned[g.ch]||[]);if(!L.includes(g.bits)&&L.length<6){L.push(g.bits);changed=true;}}});
+        if(changed)BCDetect.resetTemplates(auto.learned);
+      }
+      markSeen(p);
+      const how=matched?'숫자·한글 금액 일치':'숫자 '+p.count+'번 연속 같음';
+      if($('autoTest').checked){
+        addLog({img:p.img,tag:'테스트',name,line:fmt(amount)+'원 → 공 '+fmt(state.price?Math.floor(amount/state.price):0)+'개',meta:how+' · 목록에는 넣지 않았어요'});
+      }else{
+        const r=autoAdd(name,amount);
+        addLog({img:p.img,tag:'추가됨',kind:'ok',name,line:fmt(amount)+'원 → 공 +'+fmt(r.add)+'개'+(r.left?' · 남은 돈 '+fmt(r.left)+'원':''),meta:how});
+      }
+      setStatus(name+' 님 '+fmt(amount)+'원 수표를 처리했어요.');
+    }finally{auto.processing=false;}
+  }
+
+  function handle(r){
+    if(!r||!BCDetect.validAmount(r.amountText)){auto.pending=null;if(auto.stream)setPill('on','인식 중');return;}
+    if(seenBefore(r)){auto.pending=null;setPill('on','이미 처리한 수표');return;}
+    if(auto.pending&&sameCheck(auto.pending,r)){auto.pending.count++;}
+    else{
+      auto.pending=Object.assign({},r,{count:1,img:thumb(r),
+        nickImg:BCDetect.ocrImage(r.nickMask,44),
+        korImg:BCDetect.ocrImage(BCDetect.mask(lastImg,r.korRect.x0,r.korRect.y0,r.korRect.x1,r.korRect.y1,BCDetect.isLight),44)});
+    }
+    setPill('busy','수표 읽는 중');
+    if(auto.pending.count>=2&&!auto.processing)processCheck(auto.pending);
+  }
+
+  let lastImg=null;
+  async function tick(){
+    if(auto.busy||!auto.track||auto.track.readyState!=='live')return;
+    auto.busy=true;
+    try{
+      let w,h;
+      if(auto.ic){const bmp=await auto.ic.grabFrame();w=bmp.width;h=bmp.height;canvas.width=w;canvas.height=h;ctx.drawImage(bmp,0,0);bmp.close&&bmp.close();}
+      else{w=video.videoWidth;h=video.videoHeight;if(!w)return;canvas.width=w;canvas.height=h;ctx.drawImage(video,0,0);}
+      lastImg=ctx.getImageData(0,0,w,h);
+      handle(BCDetect.find(lastImg));
+    }catch(e){}finally{auto.busy=false;}
+  }
+
+  async function startAuto(){
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia){
+      setPill('err','지원 안 됨');setStatus('이 브라우저에서는 화면 캡처를 쓸 수 없어요. PC의 크롬이나 엣지에서 열어 주세요.');return;}
+    try{
+      auto.stream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:{ideal:10}},audio:false});
+    }catch(e){setStatus('화면 선택이 취소됐어요. 다시 시작을 눌러 마인크래프트 창을 골라 주세요.');return;}
+    auto.track=auto.stream.getVideoTracks()[0];
+    auto.track.addEventListener('ended',stopAuto);
+    video.srcObject=auto.stream;video.hidden=false;try{await video.play();}catch(e){}
+    auto.ic=('ImageCapture' in window)?new ImageCapture(auto.track):null;
+    // 탭이 뒤에 있어도 멈추지 않도록 별도 작업자의 타이머 사용
+    const wk=new Worker(URL.createObjectURL(new Blob(['setInterval(function(){postMessage(0)},350)'],{type:'text/javascript'})));
+    wk.onmessage=tick;auto.timer=wk;
+    $('autoBtn').textContent='자동 인식 중지';setPill('on','인식 중');
+    setStatus('캡처 중이에요. 글자 인식 도구를 불러오는 중…');
+    loadOCR().then(()=>{
+      if(!auto.stream)return;
+      setStatus(auto.ocrState==='ready'?'캡처 중이에요. 머니 수표에 마우스를 올리면 자동으로 읽어요.':'글자 인식 도구를 불러오지 못했어요. 금액은 숫자 모양으로 읽고, 닉네임은 "참가자N"으로 넣어요. 인터넷 연결을 확인해 주세요.');
+    });
+  }
+  function stopAuto(){
+    if(auto.timer){auto.timer.terminate();auto.timer=null;}
+    if(auto.stream){auto.stream.getTracks().forEach(t=>t.stop());}
+    auto.stream=null;auto.track=null;auto.ic=null;auto.pending=null;
+    video.srcObject=null;video.hidden=true;
+    $('autoBtn').textContent='자동 인식 시작';setPill('off','꺼짐');setStatus('자동 인식을 멈췄어요.');
+  }
+  $('autoBtn').onclick=()=>{auto.stream?stopAuto():startAuto();};
+  $('logClear').onclick=()=>{auto.log=[];renderLog();};
+  $('autoForget').onclick=()=>{auto.seen=[];auto.nicks=[];auto.learned={};auto.save();BCDetect.resetTemplates({});setStatus('처리한 수표, 기억한 닉네임 모양, 배운 숫자 모양을 모두 지웠어요.');};
+  $('logSave').onclick=async()=>{
+    const imgs=await Promise.all(auto.log.map(e=>new Promise(ok=>{const i=new Image();i.onload=()=>ok({i,e});i.onerror=()=>ok(null);i.src=e.img;}))).then(a=>a.filter(Boolean));
+    const W=760,rowH=imgs.map(x=>Math.max(x.i.height,70)+16),H=rowH.reduce((a,b)=>a+b,0)+20;
+    const c=document.createElement('canvas');c.width=W;c.height=H;const g=c.getContext('2d');
+    g.fillStyle='#ffffff';g.fillRect(0,0,W,H);g.fillStyle='#111';g.font='15px sans-serif';
+    let y=10;imgs.forEach((x,k)=>{g.drawImage(x.i,10,y);const tx=330;
+      g.fillText('['+x.e.tag+'] '+(x.e.name||''),tx,y+20);g.fillText(x.e.line||'',tx,y+42);g.fillText(x.e.meta||'',tx,y+64);y+=rowH[k];});
+    c.toBlob(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='수표인식기록.png';document.body.appendChild(a);a.click();a.remove();});
+  };
+  // 시험용: 이미지 데이터를 직접 넣어 인식 과정을 돌려 봄
+  window.__bcFeed=(img)=>{lastImg=img;canvas.width=img.width;canvas.height=img.height;ctx.putImageData(img,0,0);handle(BCDetect.find(img));return auto;};
+
+  showPriceState();
+  renderRems();
+  updateTotals();
+})();
+</script>
+</body>
+</html>

@@ -994,8 +994,12 @@ var BCDetect=(function(){
       if(e.kind==='ok'&&e.amount){
         mk('같은 수표 1장 더'+(e.extra?' ('+e.extra+'장 추가함)':''),'',()=>{const r=autoAdd(e.name,e.amount);e.extra=(e.extra||0)+1;
           setStatus(e.name+' 님 '+fmt(e.amount)+'원 수표를 1장 더 넣었어요. (공 +'+fmt(r.add)+'개)');renderLog();});
+        mk('같은 수표 10장 더','',()=>{const r=autoAdd(e.name,e.amount*10);e.extra=(e.extra||0)+10;
+          setStatus(e.name+' 님 '+fmt(e.amount)+'원 수표를 10장 더 넣었어요. (공 +'+fmt(r.add)+'개)');renderLog();});
         if(e.extra>0)mk('수표 1장 빼기','',()=>{autoRemove(e.name,e.amount);e.extra--;
           setStatus(e.name+' 님 '+fmt(e.amount)+'원 수표를 1장 뺐어요.');renderLog();});
+        if(e.extra>=10)mk('수표 10장 빼기','',()=>{autoRemove(e.name,e.amount*10);e.extra-=10;
+          setStatus(e.name+' 님 '+fmt(e.amount)+'원 수표를 10장 뺐어요.');renderLog();});
       }
       mk('기록 삭제','del',()=>deleteLog(e));
       if(acts.children.length)li.querySelector('.lt').appendChild(acts);

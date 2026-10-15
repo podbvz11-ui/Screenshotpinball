@@ -419,14 +419,18 @@ var BCDetect=(function(){
     var bytes=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
     var n=Math.floor(bytes.length/28),dv=new DataView(bytes.buffer),NAT=new Uint32Array(n*7);
     for(var k=0;k<n*7;k++)NAT[k]=dv.getUint32(k*4,true);
-    var T=new Uint32Array(n*7),TD=new Uint32Array(n*7),R=new Float32Array(n),Lx=new Uint8Array(n),Rx=new Uint8Array(n);
+    var T=new Uint32Array(n*7),TD=new Uint32Array(n*7),R=new Float32Array(n),Lx=new Uint8Array(n),Rx=new Uint8Array(n),Ty=new Uint8Array(n),By=new Uint8Array(n);
     var nm={w:16,h:14,m:new Uint8Array(224)};
     for(var g=0;g<n;g++){
       for(var q=0;q<224;q++)nm.m[q]=(NAT[g*7+(q>>5)]>>>(q&31))&1;
       var l=16,r=-1;for(var y=0;y<14;y++)for(var x=0;x<16;x++)if(nm.m[y*16+x]){if(x<l)l=x;if(x>r)r=x;}
       if(r<0){l=0;r=0;}
-      Lx[g]=l;Rx[g]=r;R[g]=(r-l+1)/14;
-      var gr=grid14(nm,l,r+1,0,14);pack(gr,T,g*7);pack(dilate(gr),TD,g*7);
+      var ty=14,by=-1;for(var y4=0;y4<14;y4++)for(var x4=0;x4<16;x4++)if(nm.m[y4*16+x4]){if(y4<ty)ty=y4;if(y4>by)by=y4;}
+      if(by<0){ty=0;by=13;}
+      Lx[g]=l;Rx[g]=r;Ty[g]=ty;By[g]=by;
+      if(OPT.vb){R[g]=(r-l+1)/(by-ty+1);var gr=grid14(nm,l,r+1,ty,by+1);}
+      else{R[g]=(r-l+1)/14;var gr=grid14(nm,l,r+1,0,14);}
+      pack(gr,T,g*7);pack(dilate(gr),TD,g*7);
     }
     var TG=new Float32Array(n*224);
     for(var g2=0;g2<n;g2++){
@@ -436,7 +440,7 @@ var BCDetect=(function(){
         TG[o2+yy*16+xx]=sum/area;mn2+=sum/area;}
       mn2/=224;var v2=0;for(var q2=0;q2<224;q2++){TG[o2+q2]-=mn2;v2+=TG[o2+q2]*TG[o2+q2];}v2=Math.sqrt(v2)||1;for(var q3=0;q3<224;q3++)TG[o2+q3]/=v2;
     }
-    HG={n:n,NAT:NAT,T:T,TD:TD,R:R,Lx:Lx,Rx:Rx,TG:TG};return HG;
+    HG={n:n,NAT:NAT,T:T,TD:TD,R:R,Lx:Lx,Rx:Rx,Ty:Ty,By:By,TG:TG};return HG;
   }
   function unpack(W,off,out){for(var i=0;i<196;i++)out[i]=(W[off+(i>>5)]>>>(i&31))&1;return out;}
   function pack(a,W,off){for(var w=0;w<7;w++)W[off+w]=0;for(var i=0;i<196;i++)if(a[i])W[off+(i>>5)]|=(1<<(i&31));W.length;}
@@ -454,14 +458,16 @@ var BCDetect=(function(){
       out[gy*14+gx]=sum/area>0.35?1:0;}
     return out;
   }
-  function matchHangul(M,x0,x1,y0,y1,Gr){
+  function inkRows(M,x0,x1,y0,y1){var a=-1,b=-1;for(var y=y0;y<y1;y++){for(var x=x0;x<x1;x++)if(M.m[y*M.w+x]){if(a<0)a=y;b=y;break;}}return a<0?[y0,y1]:[a,b+1];}
+  function matchHangul(M,x0,x1,y0,y1,Gr,allow){
     var H=loadHangul();if(!H)return null;
+    if(OPT.vb){var ir=inkRows(M,x0,x1,y0,y1);y0=ir[0];y1=ir[1];}
     var g=grid14(M,x0,x1,y0,y1),gd=dilate(g),G=new Uint32Array(7),GD=new Uint32Array(7);pack(g,G,0);pack(gd,GD,0);
     var ratio=(x1-x0)/(y1-y0),best=-1,bd=1e9,D=new Float32Array(H.n);
     for(var i=0;i<H.n;i++){
       var o=i*7,d=0;
       for(var w=0;w<7;w++){var t=H.T[o+w];d+=popcnt(t^G[w])+2*(popcnt(G[w]&~H.TD[o+w])+popcnt(t&~GD[w]));}
-      d+=Math.abs(H.R[i]-ratio)*30;D[i]=d;
+      d+=Math.abs(H.R[i]-ratio)*30;if(allow&&!allow[i])d+=1000;D[i]=d;
       if(d<bd){bd=d;best=i;}
     }
     if(Gr&&OPT.mode==='full'){
@@ -479,9 +485,9 @@ var BCDetect=(function(){
     }
     var near=[];for(var j=0;j<H.n;j++)if(D[j]<=bd+3)near.push(j);
     var top=[];for(var j2=0;j2<H.n;j2++){if(top.length<OPT.K||D[j2]<D[top[top.length-1]]){top.push(j2);top.sort(function(a,b){return D[a]-D[b];});if(top.length>OPT.K)top.pop();}}
-    return {i:best,ch:hangulChar(best),cost:bd,near:near,top:top,D:top.map(function(k){return D[k];})};
+    return {i:best,ch:hangulChar(best),cost:bd,near:near,top:top,D:top.map(function(k){return D[k];}),y0:y0,y1:y1};
   }
-  var OPT={K:12,mode:'ncc',w:0.3,r:0,sh:1};
+  var OPT={K:12,mode:'ncc',w:0.3,r:0,sh:1,vb:(typeof BC_VB!=='undefined')?BC_VB:1};
   // 후보 글자를 화면 글자 크기로 그려서(면적 평균) 밝기 이미지와 상관계수로 비교
   function decideNCC(Gr,gw,x0,x1,y0,y1,m){
     var H=HG,sw=x1-x0,sh=y1-y0,n=sw*sh,crop=new Float32Array(n),mean=0;
@@ -492,14 +498,14 @@ var BCDetect=(function(){
     var best=m.i,bs=-1e9,tpl=new Float32Array(n);
     var shifts=OPT.sh?[-0.5,0,0.5]:[0];
     Object.keys(pool).forEach(function(ks){
-      var k=+ks,l=H.Lx[k],r=H.Rx[k],tw=r-l+1,bestN=-2;
+      var k=+ks,l=H.Lx[k],r=H.Rx[k],tw=r-l+1,bestN=-2,ty=OPT.vb?H.Ty[k]:0,th=OPT.vb?H.By[k]-ty+1:14;
       shifts.forEach(function(dy){shifts.forEach(function(dx){
         var tm=0;
-        for(var y=0;y<sh;y++){var fy0=y*14/sh+dy,fy1=(y+1)*14/sh+dy;
+        for(var y=0;y<sh;y++){var fy0=y*th/sh+dy,fy1=(y+1)*th/sh+dy;
           for(var x=0;x<sw;x++){var fx0=x*tw/sw+dx,fx1=(x+1)*tw/sw+dx,sum=0,area=(fx1-fx0)*(fy1-fy0);
-            for(var yy=Math.floor(fy0);yy<Math.ceil(fy1);yy++){if(yy<0||yy>13)continue;var wy=Math.min(fy1,yy+1)-Math.max(fy0,yy);if(wy<=0)continue;
+            for(var yy=Math.floor(fy0);yy<Math.ceil(fy1);yy++){if(yy<0||yy>=th)continue;var wy=Math.min(fy1,yy+1)-Math.max(fy0,yy);if(wy<=0)continue;
               for(var xx=Math.floor(fx0);xx<Math.ceil(fx1);xx++){if(xx<0||xx>=tw)continue;var wx=Math.min(fx1,xx+1)-Math.max(fx0,xx);if(wx<=0)continue;
-                var bi=yy*16+l+xx;sum+=wx*wy*((H.NAT[k*7+(bi>>5)]>>>(bi&31))&1);}}
+                var bi=(yy+ty)*16+l+xx;sum+=wx*wy*((H.NAT[k*7+(bi>>5)]>>>(bi&31))&1);}}
             var tv=sum/area;tpl[y*sw+x]=tv;tm+=tv;}}
         tm/=n;var dot=0,vt=0;for(var i2=0;i2<n;i2++){var d=tpl[i2]-tm;dot+=d*crop[i2];vt+=d*d;}
         var ncc=dot/(vc*(Math.sqrt(vt)||1));if(ncc>bestN)bestN=ncc;
@@ -522,7 +528,7 @@ var BCDetect=(function(){
     var H=HG,pool={},bestI=cands[0],bs=1e9;
     cands.forEach(function(c){swaps(c).forEach(function(k){pool[k]=1;});});
     Object.keys(pool).forEach(function(ks){
-      var k=+ks,l=H.Lx[k],r=H.Rx[k],w=r-l+1,h=14,sw=x1-x0,sh=y1-y0,vals=new Float32Array(w*h),mn=1e9,mx=-1e9;
+      var k=+ks,l=H.Lx[k],r=H.Rx[k],w=r-l+1,ty=OPT.vb?H.Ty[k]:0,h=OPT.vb?H.By[k]-ty+1:14,sw=x1-x0,sh=y1-y0,vals=new Float32Array(w*h),mn=1e9,mx=-1e9;
       for(var gy=0;gy<h;gy++)for(var gx=0;gx<w;gx++){
         var fx0=gx*sw/w,fx1=(gx+1)*sw/w,fy0=gy*sh/h,fy1=(gy+1)*sh/h,sum=0,area=0;
         for(var y=Math.floor(fy0);y<Math.ceil(fy1);y++){var wy=Math.min(fy1,y+1)-Math.max(fy0,y);if(wy<=0)continue;
@@ -530,35 +536,42 @@ var BCDetect=(function(){
             sum+=wx*wy*Gr[(y0+y)*gw+(x0+x)];area+=wx*wy;}}
         var v=sum/area;vals[gy*w+gx]=v;if(v<mn)mn=v;if(v>mx)mx=v;}
       var sc=0,rng=(mx-mn)||1;
-      for(var yy=0;yy<h;yy++)for(var xx=0;xx<w;xx++){var bit=(H.NAT[k*7+((yy*16+l+xx)>>5)]>>>((yy*16+l+xx)&31))&1,dv=(vals[yy*w+xx]-mn)/rng-bit;sc+=dv*dv;}
+      for(var yy=0;yy<h;yy++)for(var xx=0;xx<w;xx++){var bix=(yy+ty)*16+l+xx,bit=(H.NAT[k*7+(bix>>5)]>>>(bix&31))&1,dv=(vals[yy*w+xx]-mn)/rng-bit;sc+=dv*dv;}
       if(sc<bs){bs=sc;bestI=k;}
     });
     return bestI;
   }
   // 글자 줄 전체 읽기: 잉크 덩어리를 묶어 가며 가장 잘 맞는 글자 조합을 찾음
-  function readHangul(M,maxCost,Gr){
+  function readHangul(M,maxCost,Gr,allow){
     maxCost=maxCost||62;
     var rows=[],y,x;for(y=0;y<M.h;y++){var c=0;for(x=0;x<M.w;x++)c+=M.m[y*M.w+x];rows.push(c>0);}
     var blocks=[];y=0;while(y<M.h){if(rows[y]){var s0=y;while(y<M.h&&(rows[y]||(y+1<M.h&&rows[y+1])))y++;blocks.push([s0,y]);}else y++;}
     if(!blocks.length)return {text:'',parts:[]};
-    var bl=blocks.reduce(function(a,b){return (b[1]-b[0])>(a[1]-a[0])?b:a;}),t=bl[0],b=bl[1],H=b-t;
+    // 받침 등으로 글자 아래쪽이 몇 줄 떨어져 보일 수 있어서, 가까운 덩어리는 한 줄로 합침
+    var mb=[];blocks.forEach(function(k){var l=mb[mb.length-1];if(l&&k[0]-l[1]<=Math.max(2,Math.round((k[1]-l[0])*0.18)))l[1]=k[1];else mb.push(k.slice());});
+    var bl=mb.reduce(function(a,b){return (b[1]-b[0])>(a[1]-a[0])?b:a;}),t=bl[0],b=bl[1],H=b-t;
     var cols=new Uint8Array(M.w);for(y=t;y<b;y++)for(x=0;x<M.w;x++)if(M.m[y*M.w+x])cols[x]=1;
     var runs=[];x=0;while(x<M.w){if(cols[x]){var s=x;while(x<M.w&&cols[x])x++;runs.push([s,x]);}else x++;}
     // 덩어리마다 한글(가는 획)인지 영어(두꺼운 획)인지 표시해서, 서로 다른 종류는 한 글자로 묶지 않음
     var unitH=Math.max(1,H/14),rinfo=runs.map(function(r){return strokeInfo(M,r[0],r[1],t,b);}),
-        kind=rinfo.map(function(st){return (st.thick/unitH)>=2.2?1:0;});
+        kind=rinfo.map(function(st,ix){return isLatinStroke(st.thick/unitH,st.dens,(runs[ix][1]-runs[ix][0])/H)?1:0;});
+    // 영어 글자는 한글보다 위아래로 삐져나옴(h, y, g 등) → 줄 높이는 한글 덩어리만으로 다시 잼
+    if(kind.some(function(k){return k===1;})&&kind.some(function(k){return k===0;})){
+      var t2=1e9,b2=-1;runs.forEach(function(r,ix){if(kind[ix])return;for(var yy=t;yy<b;yy++)for(var xx=r[0];xx<r[1];xx++)if(M.m[yy*M.w+xx]){if(yy<t2)t2=yy;if(yy>b2)b2=yy;}});
+      if(b2>t2&&(b2+1-t2)>=H*0.6){t=t2;b=b2+1;H=b-t;unitH=Math.max(1,H/14);}
+    }
     var n=runs.length,best=[{c:0,parts:[]}];for(var k=1;k<=n;k++)best.push({c:1e9,parts:[]});
     var cache={};
     for(var j=1;j<=n;j++)for(var i=Math.max(0,j-5);i<j;i++){
       var wdt=runs[j-1][1]-runs[i][0];if(wdt>H*1.25)continue;
       var mixed=false;for(var q=i+1;q<j;q++)if(kind[q]!==kind[i])mixed=true;if(mixed)continue;
-      var key=i+':'+j,m=cache[key]||(cache[key]=matchHangul(M,runs[i][0],runs[j-1][1],t,b,Gr));if(!m)return {text:'',parts:[]};
+      var key=i+':'+j,m=cache[key]||(cache[key]=matchHangul(M,runs[i][0],runs[j-1][1],t,b,Gr,allow));if(!m)return {text:'',parts:[]};
       var cost=best[i].c+Math.min(m.cost,maxCost+20)+4;
       if(cost<best[j].c)best[j]={c:cost,parts:best[i].parts.concat([{ch:m.ch,cost:m.cost,key:key,x0:runs[i][0],x1:runs[j-1][1],known:m.cost<=maxCost}])};
     }
     var parts=best[n].parts;
     parts.forEach(function(p){var st=strokeInfo(M,p.x0,p.x1,t,b);p.thick=st.thick;p.dens=st.dens;});
-    if(Gr&&OPT.mode!=='full')parts.forEach(function(p){if(!p.known&&p.cost>95)return;var m=cache[p.key];var k=OPT.mode==='ncc'?decide(Gr,M.w,p.x0,p.x1,t,b,[decideNCC(Gr,M.w,p.x0,p.x1,t,b,m)]):decide(Gr,M.w,p.x0,p.x1,t,b,m.near);p.ch=hangulChar(k);});
+    if(Gr&&OPT.mode!=='full')parts.forEach(function(p){if(!p.known&&p.cost>95)return;var m=cache[p.key];var gy0=OPT.vb?m.y0:t,gy1=OPT.vb?m.y1:b;var k=OPT.mode==='ncc'?decide(Gr,M.w,p.x0,p.x1,gy0,gy1,[decideNCC(Gr,M.w,p.x0,p.x1,gy0,gy1,m)]):decide(Gr,M.w,p.x0,p.x1,gy0,gy1,m.near);if(allow&&!allow[k])k=m.i;p.ch=hangulChar(k);});
     return {text:parts.map(function(p){return p.known?p.ch:'?';}).join(''),parts:parts,top:t,bot:b};
   }
   function gray(img,x0,y0,x1,y1){
@@ -567,6 +580,8 @@ var BCDetect=(function(){
     for(var y=0;y<h;y++)for(var x=0;x<w;x++){var i=((y+y0)*img.width+(x+x0))*4;g[y*w+x]=(d[i]+d[i+1]+d[i+2])/765;}
     return g;
   }
+  // 영어(마인크래프트 기본 폰트)는 획이 두껍고 꽉 차 있음. 한글(Unifont)은 가늘고 성김
+  function isLatinStroke(thickRel,dens,wRel){if(wRel!==undefined&&wRel<0.45)return false;return thickRel>=2.4||(thickRel>=1.8&&dens>=0.38)||(thickRel>=1.5&&dens>=0.55);}
   function strokeInfo(M,x0,x1,y0,y1){
     var hr=[],vr=[],ink=0,x,y,c;
     for(y=y0;y<y1;y++){c=0;for(x=x0;x<x1;x++){if(M.m[y*M.w+x]){c++;ink++;}else if(c){hr.push(c);c=0;}}if(c)hr.push(c);}
@@ -580,11 +595,18 @@ var BCDetect=(function(){
     var h=readHangul(M,0,G),unit=Math.max(1,(h.bot-h.top)/14);
     var han=[],latin=0;
     (h.parts||[]).forEach(function(p){
-      var latinLike=(p.thick/unit)>=2.2||p.dens>=0.45;
+      var latinLike=isLatinStroke(p.thick/unit,p.dens,(p.x1-p.x0)/Math.max(1,h.bot-h.top));
       if(!latinLike&&(p.known||p.cost<=95))han.push(p.ch);else latin++;
     });
+    // 완성된 글자가 있으면 낱자(ㅑ, ㅣ 등)는 영어 글자를 잘못 읽은 것이라 뺌
+    var full=han.filter(function(c){var x=c.charCodeAt(0);return x>=0xAC00&&x<=0xD7A3;});
+    if(full.length&&full.length<han.length){latin+=han.length-full.length;han=full;}
     return {hangul:han.join(''),latin:latin,parts:h.parts||[]};
   }
+  var NUMSET=null;
+  function numAllow(){if(NUMSET)return NUMSET;var H=loadHangul();NUMSET=new Uint8Array(H.n);
+    '영일이삼사오육칠팔구십백천만억조골드'.split('').forEach(function(c){NUMSET[c.charCodeAt(0)-0xAC00]=1;});return NUMSET;}
+  function readKorAmount(M,G){return readHangul(M,120,G,numAllow());}
   function subMask(M,x0,x1,y0,y1){var w=x1-x0,h=y1-y0,m=new Uint8Array(w*h);for(var y=0;y<h;y++)for(var x=0;x<w;x++)m[y*w+x]=M.m[(y+y0)*M.w+(x+x0)];return {w:w,h:h,m:m,x0:0,y0:0};}
 
   function validAmount(t){return /^\d{1,3}(,\d{3})*$/.test(t);}
@@ -597,7 +619,7 @@ var BCDetect=(function(){
       for(var dy=0;dy<sc;dy++)for(var dx=0;dx<sc;dx++){var k=((p+y*sc+dy)*W+(p+x*sc+dx))*4;out[k]=out[k+1]=out[k+2]=0;}
     return {width:W,height:H,data:out};
   }
-  return {OPT:OPT,gray:gray,readHangul:readHangul,readName:readName,subMask:subMask,loadHangul:loadHangul,why:function(){return why;},find:find,mask:mask,isLight:isLight,isWhite:isWhite,isYellow:isYellow,validAmount:validAmount,similar:similar,
+  return {readKorAmount:readKorAmount,OPT:OPT,gray:gray,readHangul:readHangul,readName:readName,subMask:subMask,loadHangul:loadHangul,why:function(){return why;},find:find,mask:mask,isLight:isLight,isWhite:isWhite,isYellow:isYellow,validAmount:validAmount,similar:similar,
     sigStr:sigStr,sigParse:sigParse,ocrImage:ocrImage,resetTemplates:resetTemplates};
 })();
 
@@ -876,17 +898,18 @@ var BCDetect=(function(){
   function timeEq(a,b){return (a&&b)?a===b:true;}
   function sameCheck(a,b){
     return a.amountKey===b.amountKey&&timeEq(a.timeText,b.timeText)&&
-      (BCDetect.similar(a.nickSig,b.nickSig)||nameClose(a.nameRead,b.nameRead));
+      nameClose(a.nameRead,b.nameRead);
   }
   function seenBefore(r){
     const now=Date.now();
     return auto.seen.some(s=>{
       if(s.a!==r.amountKey)return false;
-      const sameName=nameClose(s.nr,r.nameRead)||nameClose(s.name,r.nameRead)||BCDetect.similar(BCDetect.sigParse(s.n),r.nickSig);
+      const sameName=nameClose(s.nr,r.nameRead)||nameClose(s.name,r.nameRead);
       if(!sameName)return false;
-      // 1분 안에 처리한 같은 사람·같은 금액은 시각이 다르게 읽혀도 같은 수표로 봄 (방송 화질로 시각을 잘못 읽는 경우 대비)
-      if(s.at&&now-s.at<60000)return true;
-      return timeEq(s.t,r.timeText);
+      // 발행 시각이 둘 다 읽혔으면 시각으로 구분 (같은 사람이 같은 금액을 여러 장 낸 경우)
+      if(s.t&&r.timeText)return s.t===r.timeText;
+      // 시각을 못 읽은 쪽이 있으면: 1분 안에 처리한 같은 사람·같은 금액은 같은 수표로 봄
+      return !!(s.at&&now-s.at<60000)||!s.t||!r.timeText;
     });
   }
   function markSeen(p,name){auto.seen.push({a:p.amountKey,t:p.timeText||'',nr:p.nameRead||'',name:name||'',n:BCDetect.sigStr(p.nickSig),at:Date.now()});auto.save();}
@@ -1070,7 +1093,9 @@ var BCDetect=(function(){
       const win=votes[0]||{text:p.nameRead,mask:p.nickMask,gray:p.nickGray,count:1};
       p.nameRead=win.text;
       const tv=Object.entries(p.timeVotes).sort((x,y)=>y[1]-x[1]);p.timeText=tv.length?tv[0][0]:'';
-      let entry=auto.nicks.find(n=>BCDetect.similar(BCDetect.sigParse(n.s),p.nickSig)||nameClose(n.raw,win.text));
+      // 이미 처리한 수표를 다른 화면 조각으로 또 잡은 경우(이름을 다수결로 정한 뒤 다시 확인)
+      if(seenBefore({amountKey:p.amountKey,timeText:p.timeText,nameRead:win.text})){p.done=true;return;}
+      let entry=auto.nicks.find(n=>nameClose(n.raw,win.text));
       let name=entry&&entry.name,cands='';
       if(!name){
         const r=await readName(win.mask,win.gray);name=r.name;
@@ -1120,20 +1145,25 @@ var BCDetect=(function(){
   }
   function handle(r){
     debugLine(r);
-    const valid=r&&BCDetect.validAmount(r.amountText);
+    const valid=r&&BCDetect.validAmount(r.amountText)&&r.amountText.replace(/,/g,'').length>=4;
     let h=null;
     // 같은 수표를 이미 5장 넘게 읽었으면 글자 읽기를 건너뛰어 가볍게
     const P=auto.pending;
-    if(valid&&P&&!P.done&&P.voteFrames>=5&&r.amountText===P.amountText&&BCDetect.similar(r.nickSig,P.nickSig)){
+    if(valid&&P&&!P.done&&P.voteFrames>=5&&r.amountText===P.amountText&&BCDetect.similar(r.nickSig,P.nickSig)&&BCDetect.similar(r.timeSig,P.timeSig)){
       P.count++;setPill('busy','수표 읽는 중');if(!auto.processing)processCheck(P,false);return;
     }
     if(valid){
       h=BCDetect.readHangul(r.nickMask,0,r.nickGray);r.nameRead=h.text;
       const k=r.korRect;r.korMask=BCDetect.mask(lastImg,k.x0,k.y0,k.x1,k.y1,BCDetect.isLight);r.korGray=BCDetect.gray(lastImg,k.x0,k.y0,k.x1,k.y1);
-      r.korVal=korAmount(BCDetect.readHangul(r.korMask,0,r.korGray).text);
-      // 한글 금액 줄이 화면 끝에 잘려 자릿수가 달라졌으면 쓰지 않음
-      if(r.korVal&&String(r.korVal).length!==r.amountText.replace(/,/g,'').length)r.korVal=null;
+      const kt=BCDetect.readKorAmount(r.korMask,r.korGray).text;
+      r.korVal=korAmount(kt);
+      // 한글 금액 뒤에 "골드"가 보이면 끝까지 읽힌 것 → 숫자 줄보다 한글을 믿음
+      // "골드"가 안 보이면(화면 끝에 잘림 등) 숫자 줄과 자릿수가 같을 때만 씀
+      const complete=/^[영일이삼사오육칠팔구십백천만억조]+골/.test(kt.replace(/[^가-힣]/g,''));
+      if(r.korVal&&!complete&&String(r.korVal).length!==r.amountText.replace(/,/g,'').length)r.korVal=null;
       r.amountKey=r.korVal?String(r.korVal):r.amountText.replace(/,/g,'');
+      // 이름 줄이 비어 있으면 수표 툴팁이 아닌 것으로 봄
+      if(!h.parts.length){debugLine(null);return;}
     }
     if(!valid||seenBefore(r)){
       // 툴팁이 사라짐(또는 이미 처리한 수표): 아직 처리 못 한 수표가 있으면 지금까지 본 걸로 마지막 판단

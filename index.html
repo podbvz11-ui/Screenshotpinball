@@ -92,6 +92,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .log .lm{color:var(--muted);font-size:.78rem}
 .tag{display:inline-block;font-size:.72rem;font-weight:700;padding:1px 8px;border-radius:999px;margin-right:6px;background:var(--soft);color:var(--fg)}
 .tag.ok{background:var(--accent);color:var(--accent-ink)}
+.log .fix.del{color:var(--danger);border-color:var(--danger)}
 .log .fix{align-self:flex-start;margin-top:4px;padding:3px 10px;font-size:.78rem;background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:999px}
 .lacts{display:flex;flex-wrap:wrap;gap:6px}
 .fixrow{display:flex;gap:6px;margin-top:4px}
@@ -188,7 +189,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     </div>
     <textarea id="box" lang="ko" spellcheck="false" aria-label="닉네임/공 개수 목록" placeholder="예: 김민교/3, 모치/4, 꼼모리/3"></textarea>
     <p class="warnline" id="badLine" hidden></p>
-    <p class="note">박스 안 글자를 직접 지우거나 고쳐 쓸 수 있어요. <b>닉네임/숫자</b>를 쉼표로 구분하면 합계에 바로 반영돼요. 받은 돈 합계는 공 개수 × 공 1개당 가격이에요.</p>
+    <p class="note">박스 안 글자를 직접 지우거나 고쳐 쓸 수 있어요. <b>닉네임/숫자</b>를 쉼표로 구분하면 합계에 바로 반영돼요. 같은 이름을 두 번 쓰면 박스 밖을 누를 때 자동으로 합쳐져요. 받은 돈 합계는 공 개수 × 공 1개당 가격이에요.</p>
     <p class="note">기록은 이 브라우저에만 저장돼요.</p>
   </section>
 
@@ -805,6 +806,16 @@ var BCDetect=(function(){
 
   money.addEventListener('input',updatePreview);
   box.addEventListener('input',()=>{state.text=box.value;save();updateTotals();renderRems();});
+  function mergeSameNames(){
+    const {items,bad}=parseBox(box.value),merged=[];
+    items.forEach(r=>{const ex=merged.find(m=>m.nick===r.nick);if(ex)ex.balls+=r.balls;else merged.push({nick:r.nick,balls:r.balls});});
+    if(merged.length===items.length)return;
+    box.value=toText(merged)+(bad.length?', '+bad.join(', '):'');
+    state.text=box.value;save();updateTotals();renderRems();
+    setStatus('목록에서 같은 이름을 하나로 합쳤어요.');
+  }
+  box.addEventListener('change',mergeSameNames);
+  box.addEventListener('blur',mergeSameNames);
 
   $('addForm').addEventListener('submit',e=>{
     e.preventDefault();
@@ -866,6 +877,19 @@ var BCDetect=(function(){
     box.value=toText(items)+(bad.length?', '+bad.join(', '):'');
     state.text=box.value;save();updateTotals();renderRems();
     return {add,left};
+  }
+
+  // 자동으로 넣었던 돈을 되돌림: 그 사람의 (공 개수×가격 + 남은 돈)에서 빼고 다시 계산
+  function autoRemove(name,amount){
+    const {items,bad}=parseBox(box.value);
+    const ex=items.find(r=>r.nick===name);
+    const have=(ex?ex.balls*state.price:0)+(state.rems[name]||0);
+    const total=Math.max(0,have-amount);
+    const balls=state.price>0?Math.floor(total/state.price):0,left=state.price>0?total%state.price:total;
+    if(left)state.rems[name]=left;else delete state.rems[name];
+    if(ex){if(balls>0||left>0)ex.balls=balls;else items.splice(items.indexOf(ex),1);}
+    box.value=toText(items)+(bad.length?', '+bad.join(', '):'');
+    state.text=box.value;save();updateTotals();renderRems();
   }
 
   const auto={
@@ -934,7 +958,7 @@ var BCDetect=(function(){
       return !!(s.at&&now-s.at<60000)||!s.t||!r.timeText;
     });
   }
-  function markSeen(p,name){auto.seen.push({a:p.amountKey,t:p.timeText||'',nr:p.nameRead||'',name:name||'',n:BCDetect.sigStr(p.nickSig),at:Date.now()});auto.save();}
+  function markSeen(p,name){const o={a:p.amountKey,t:p.timeText||'',nr:p.nameRead||'',name:name||'',n:BCDetect.sigStr(p.nickSig),at:Date.now()};auto.seen.push(o);auto.save();return o;}
 
   function thumb(r){
     const b=r.box,w=b.x1-b.x0,h=b.y1-b.y0,sc=Math.min(1,300/w),c=document.createElement('canvas');
@@ -944,6 +968,14 @@ var BCDetect=(function(){
 
   function addLog(e){
     auto.log.unshift(e);if(auto.log.length>60)auto.log.pop();renderLog();
+  }
+  // 잘못 인식된 기록 지우기: 목록에 넣었던 돈도 함께 빼고, 같은 수표를 다시 인식할 수 있게 처리 기록도 지움
+  function deleteLog(e){
+    if(e.kind==='ok'&&e.amount)autoRemove(e.name,e.amount*(1+(e.extra||0)));
+    if(e.seenRec){const i=auto.seen.indexOf(e.seenRec);if(i>=0){auto.seen.splice(i,1);auto.save();}}
+    const k=auto.log.indexOf(e);if(k>=0)auto.log.splice(k,1);
+    setStatus((e.name||'읽기 실패')+' 기록을 지웠어요.'+(e.kind==='ok'?' 목록에서도 '+fmt(e.amount*(1+(e.extra||0)))+'원만큼 뺐어요.':''));
+    renderLog();
   }
   function renderLog(){
     const ul=$('autoLog');ul.innerHTML='';
@@ -958,11 +990,14 @@ var BCDetect=(function(){
       const acts=document.createElement('div');acts.className='lacts';
       if(e.sig){const btn=document.createElement('button');btn.type='button';btn.className='fix';btn.textContent='이름 고치기';
         btn.onclick=()=>fixName(e,li);acts.appendChild(btn);}
-      if(e.kind==='ok'&&e.amount){const b2=document.createElement('button');b2.type='button';b2.className='fix';
-        b2.textContent='같은 수표 1장 더'+(e.extra?' ('+e.extra+'장 추가함)':'');
-        b2.onclick=()=>{const r=autoAdd(e.name,e.amount);e.extra=(e.extra||0)+1;
-          setStatus(e.name+' 님 '+fmt(e.amount)+'원 수표를 1장 더 넣었어요. (공 +'+fmt(r.add)+'개)');renderLog();};
-        acts.appendChild(b2);}
+      const mk=(label,cls,fn)=>{const b=document.createElement('button');b.type='button';b.className='fix'+(cls?' '+cls:'');b.textContent=label;b.onclick=fn;acts.appendChild(b);};
+      if(e.kind==='ok'&&e.amount){
+        mk('같은 수표 1장 더'+(e.extra?' ('+e.extra+'장 추가함)':''),'',()=>{const r=autoAdd(e.name,e.amount);e.extra=(e.extra||0)+1;
+          setStatus(e.name+' 님 '+fmt(e.amount)+'원 수표를 1장 더 넣었어요. (공 +'+fmt(r.add)+'개)');renderLog();});
+        if(e.extra>0)mk('수표 1장 빼기','',()=>{autoRemove(e.name,e.amount);e.extra--;
+          setStatus(e.name+' 님 '+fmt(e.amount)+'원 수표를 1장 뺐어요.');renderLog();});
+      }
+      mk('기록 삭제','del',()=>deleteLog(e));
       if(acts.children.length)li.querySelector('.lt').appendChild(acts);
       ul.appendChild(li);
     });
@@ -1127,15 +1162,15 @@ var BCDetect=(function(){
         if(!name)name='참가자'+(auto.nicks.length+1);
         entry={s:BCDetect.sigStr(p.nickSig),raw:win.text,name};auto.nicks.push(entry);
       }
-      markSeen(p,name);
+      const seenRec=markSeen(p,name);
       const tm=p.timeText?p.timeText.replace(/^(\d{4})(\d\d)(\d\d)(\d\d)(\d\d)$/,'$4:$5 발행'):'';
       const how=(matched?'숫자·한글 금액 일치':korVal?'한글 금액 기준 ('+korText+')':'숫자 모양으로 확인')+(tm?' · '+tm:'')+(cands?' · 이름 읽기: '+cands:'');
       const amount=p.amount,sig=entry.s;
       if($('autoTest').checked){
-        addLog({img:p.img,tag:'테스트',name,sig,amount,line:fmt(amount)+'원 → 공 '+fmt(state.price?Math.floor(amount/state.price):0)+'개',meta:how+' · 목록에는 넣지 않았어요'});
+        addLog({img:p.img,tag:'테스트',name,sig,amount,seenRec,line:fmt(amount)+'원 → 공 '+fmt(state.price?Math.floor(amount/state.price):0)+'개',meta:how+' · 목록에는 넣지 않았어요'});
       }else{
         const r=autoAdd(name,amount);
-        addLog({img:p.img,tag:'추가됨',kind:'ok',name,sig,amount,line:fmt(amount)+'원 → 공 +'+fmt(r.add)+'개'+(r.left?' · 남은 돈 '+fmt(r.left)+'원':''),meta:how});
+        addLog({img:p.img,tag:'추가됨',kind:'ok',name,sig,amount,seenRec,line:fmt(amount)+'원 → 공 +'+fmt(r.add)+'개'+(r.left?' · 남은 돈 '+fmt(r.left)+'원':''),meta:how});
       }
       setStatus(name+' 님 '+fmt(amount)+'원 수표를 처리했어요.');
     }finally{

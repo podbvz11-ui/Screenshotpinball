@@ -928,23 +928,27 @@ var BCDetect=(function(){
   function korToNumber(t){const s=t.replace(/\s+/g,'').replace(/골드.*$/,'').replace(/[^0-9일이삼사오육칠팔구십백천만억조영공]/g,'');const v=parseAmount(s);return Number.isNaN(v)||!v?null:v;}
 
   // 같은 수표인지: 금액 + 발행 시각(분까지) + 발행자 이름이 같으면 같은 수표
-  function nameClose(a,b){
+  // 같은 사람인지: 글자가 같거나, 픽셀 글꼴에서 헷갈리는 ㅁ/ㅇ만 다를 때만 (포로미≠츄로미처럼 한 글자 다르면 다른 사람)
+  function nameSame(a,b){
     if(!a||!b)return false;if(a===b)return true;
-    if(jamoKey(a)===jamoKey(b))return true;
-    // 한 글자 차이는 3글자 이상 이름에서만 같은 사람으로 봄 (2글자 이름은 한 글자만 달라도 다른 사람일 수 있음)
-    return Math.min(a.length,b.length)>=3&&editDist(a,b)<=1;
+    return jamoKey(a)===jamoKey(b);
   }
-  // 발행 시각은 둘 다 확실히 읽혔을 때만 비교. 못 읽은 쪽이 있으면 시각으로는 구분하지 않음
+  // 한 번 마우스를 올린 동안(같은 툴팁) 화면마다 읽은 이름이 살짝 흔들리는 것까지 허용
+  function nameClose(a,b){
+    if(nameSame(a,b))return true;
+    return !!a&&!!b&&Math.min(a.length,b.length)>=3&&editDist(a,b)<=1;
+  }
+
   function timeEq(a,b){return (a&&b)?a===b:true;}
   function sameCheck(a,b){
     return a.amountKey===b.amountKey&&timeEq(a.timeText,b.timeText)&&
-      nameClose(a.nameRead,b.nameRead);
+      (nameSame(a.nameRead,b.nameRead)||(nameClose(a.nameRead,b.nameRead)&&BCDetect.similar(a.nickSig,b.nickSig)));
   }
   function seenBefore(r){
     const now=Date.now();
     return auto.seen.some(s=>{
       if(s.a!==r.amountKey)return false;
-      const sameName=nameClose(s.nr,r.nameRead)||nameClose(s.name,r.nameRead);
+      const sameName=nameSame(s.nr,r.nameRead)||nameSame(s.name,r.nameRead);
       if(!sameName)return false;
       // 발행 시각이 둘 다 읽혔으면 시각으로 구분 (같은 사람이 같은 금액을 여러 장 낸 경우)
       if(s.t&&r.timeText){
@@ -1022,7 +1026,7 @@ var BCDetect=(function(){
   function jamoKey(str){
     let k='';for(const ch of str){const c=ch.charCodeAt(0)-0xAC00;
       if(c<0||c>=11172){k+=ch;continue;}
-      let L=Math.floor(c/588);const V=Math.floor((c%588)/28),T=c%28;if(L===6)L=11;k+=L+'.'+V+'.'+T+'|';}
+      let L=Math.floor(c/588);const V=Math.floor((c%588)/28);let T=c%28;if(L===6)L=11;if(T===16)T=21;k+=L+'.'+V+'.'+T+'|';}
     return k;
   }
   // 한글 금액 줄을 숫자로: "이천팔백만 골드" → 28000000 (ㅁ/ㅇ이 헷갈린 글자는 숫자 글자로 바로잡음)
@@ -1158,7 +1162,7 @@ var BCDetect=(function(){
       const tv=Object.entries(p.timeVotes).sort((x,y)=>y[1]-x[1]);p.timeText=tv.length?tv[0][0]:'';
       // 이미 처리한 수표를 다른 화면 조각으로 또 잡은 경우(이름을 다수결로 정한 뒤 다시 확인)
       if(seenBefore({amountKey:p.amountKey,timeText:p.timeText,nameRead:win.text})){p.done=true;return;}
-      let entry=auto.nicks.find(n=>nameClose(n.raw,win.text));
+      let entry=auto.nicks.find(n=>nameSame(n.raw,win.text));
       let name=entry&&entry.name,cands='';
       if(!name){
         const r=await readName(win.mask,win.gray);name=r.name;
